@@ -31,7 +31,8 @@
     Box Wattage<br>
     <input type="number" name="box_wattage" id="box_wattage" value="1100" step="50" min="0" max="10000">
   </label>
-  <button type="button" id="plus_box_wattage">+25 W</button>&nbsp;<button type="button" id="minus_box_wattage">-25 W</button>
+  <button type="button" id="plus_box_wattage">+25</button>
+  <button type="button" id="minus_box_wattage">-25</button>
   <br>
   <label>
     Box Time<br>
@@ -42,19 +43,24 @@
     <input type="number" name="box_seconds" id="box_seconds" value="0" step="15" min="0" max="60">
     secs
   </label>
-  <button type="button" id="plus_15_s">+15s</button>&nbsp;<button type="button" id="minus_15_s">-15s</button>
+  <button type="button" id="plus_15_s">+15</button>
+  <button type="button" id="minus_15_s">-15</button>
+  <button type="button" id="plus_1_s">+</button>
+  <button type="button" id="minus_1_s">-</button>
   <br>
   <label>
     Box Power (1-10)<br>
     <input type="number" name="box_power" id="box_power" value="10" min="0" max="10">
   </label>
-  <button type="button" id="plus_1_power">+1</button>&nbsp;<button type="button" id="minus_1_power">-1</button>
+  <button type="button" id="plus_1_power">+</button>
+  <button type="button" id="minus_1_power">-</button>
   <br>
   <label>
     Your Wattage<br>
     <input type="number" name="your_wattage" id="your_wattage" value="975" step="50" min="0" max="10000">
   </label>
-  <button type="button" id="plus_your_wattage">+25 W</button>&nbsp;<button type="button" id="minus_your_wattage">-25 W</button>
+  <button type="button" id="plus_your_wattage">+25</button>
+  <button type="button" id="minus_your_wattage">-25</button>
   <p>
     Your Time:
     <output for="form" for="box_wattage box_minutes box_seconds box_power your_wattage" id="result_time"></output>
@@ -73,6 +79,8 @@ const boxPowerInput = document.getElementById('box_power');
 const yourWattageInput = document.getElementById('your_wattage');
 const plus15Btn = document.getElementById('plus_15_s');
 const minus15Btn = document.getElementById('minus_15_s');
+const plus1Btn = document.getElementById('plus_1_s');
+const minus1Btn = document.getElementById('minus_1_s');
 const plus1PowerBtn = document.getElementById('plus_1_power');
 const minus1PowerBtn = document.getElementById('minus_1_power');
 const plusBoxWattageBtn = document.getElementById('plus_box_wattage');
@@ -95,7 +103,7 @@ const getBoxSeconds = () => (
 const roundToNearest = (value, nearest) => Math.round(value / nearest) * nearest;
 
 const timeBtnClickHandler = (delta) => () => {
-  const newSeconds = roundToNearest(getBoxSeconds(), 15) + delta;
+  const newSeconds = getBoxSeconds() + delta;
   const { minutes, seconds } = secondsToMinsSecs(newSeconds);
   boxMinutesInput.value = minutes;
   boxSecondsInput.value = seconds;
@@ -104,6 +112,8 @@ const timeBtnClickHandler = (delta) => () => {
 
 plus15Btn.addEventListener('click', timeBtnClickHandler(15));
 minus15Btn.addEventListener('click', timeBtnClickHandler(-15));
+plus1Btn.addEventListener('click', timeBtnClickHandler(1));
+minus1Btn.addEventListener('click', timeBtnClickHandler(-1));
 
 const powerBtnClickHandler = (delta) => () => {
   boxPowerInput.value = Math.max(0, Math.min(10, parseInt(boxPowerInput.value, 10) + delta));
