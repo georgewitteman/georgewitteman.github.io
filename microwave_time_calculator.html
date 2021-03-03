@@ -93,9 +93,6 @@ function computeTime() {
 
   const newUrl = new URL(window.location.href);
   newUrl.searchParams.set('box_wattage', boxWattage);
-  newUrl.searchParams.set('box_minutes', Math.floor(boxSeconds / 60));
-  newUrl.searchParams.set('box_seconds', Math.round(boxSeconds % 60));
-  newUrl.searchParams.set('box_power', boxPower);
   newUrl.searchParams.set('your_wattage', yourWattage);
   window.history.replaceState({}, '', newUrl.pathname + newUrl.search);
 
