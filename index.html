@@ -2,51 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-
-  <title>Microwave Time Calculator</title>
-  <meta name="description" content="Calculate the time you should put something in the microwave based on the wattage of your microwave and the wattage used to determine the time on the box.">
+  <title>George Witteman </title>
   <meta name="author" content="George Witteman">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-<label>
-  Box Wattage
-  <input type="number" name="box_wattage" id="box_wattage" value="1100" step="25">
-</label>
-<label>
-  Box Time (minutes)
-  <input type="number" name="box_minutes" id="box_minutes" value="3">
-</label>
-<label>
-  Box Time (seconds)
-  <input type="number" name="box_seconds" id="box_seconds" value="0">
-</label>
-<label>
-  Your Wattage
-  <input type="number" name="your_wattage" id="your_wattage" value="950" step="25">
-</label>
-<div id="result"></div>
-
-<script>
-const boxWattageInput = document.getElementById('box_wattage');
-const boxMinutesInput = document.getElementById('box_minutes');
-const boxSecondsInput = document.getElementById('box_seconds');
-const yourWattageInput = document.getElementById('your_wattage');
-const resultElement = document.getElementById('result');
-function computeTime() {
-  const boxWattage = parseInt(boxWattageInput.value, 10);
-  const boxSeconds = (parseInt(boxMinutesInput.value, 10) * 60) + parseInt(boxSecondsInput.value, 10);
-  const yourWattage = parseInt(yourWattageInput.value, 10);
-
-  const resultSeconds = boxSeconds * (boxWattage / yourWattage);
-
-  resultElement.innerHTML = `${Math.floor(resultSeconds / 60)} min ${Math.round(resultSeconds % 60)} sec`
-}
-
-boxWattageInput.addEventListener('change', computeTime);
-boxMinutesInput.addEventListener('change', computeTime);
-boxSecondsInput.addEventListener('change', computeTime);
-yourWattageInput.addEventListener('change', computeTime);
-computeTime();
-</script>
+  <ul>
+    <li><a href="/microwave_time_calculator.html">Microwave Time Calculator</a></li>
+    <li><a href="/stuff.html">Stuff I Use</a></li>
+    <li>Contact me: <a href="mailto:george@witteman.me">george@witteman.me</a></li>
+  </ul>
 </body>
 </html>
