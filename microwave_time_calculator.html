@@ -35,7 +35,7 @@
   <br>
   <label>
     Box Time<br>
-    <input type="number" name="box_minutes" id="box_minutes" value="3" min="0" max="60">
+    <input type="number" name="box_minutes" id="box_minutes" value="1" min="0" max="60">
     mins
   </label>
   <label>
@@ -130,8 +130,6 @@ urlParams.forEach((value, key) => {
     element.value = value;
   }
 });
-
-const myParam = urlParams.get('myParam');
 
 const resultTimeElement = document.getElementById('result_time');
 const resultPowerElement = document.getElementById('result_power');
