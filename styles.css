@@ -7,6 +7,10 @@ body {
   padding: 8px;
 }
 
+nav {
+  margin-bottom: 1em;
+}
+
 @media only screen and (max-width: 600px) {
   button, input {
     font-size: 1.5em;
