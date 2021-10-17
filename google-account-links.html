@@ -20,18 +20,18 @@
                 Google Email Address<br>
                 <input type="email" name="email" id="email" autofocus placeholder="first.last@gmail.com">
             </label>
-            <p>
-                <output for="form" for="email" id="gmail"></output>
-            </p> 
-            <p>
-                <output for="form" for="email" id="google_drive"></output>
-            </p>
+            <p><output form="form" for="email" id="gmail"></output></p> 
+            <p><output form="form" for="email" id="google_drive"></output></p>
+            <p><output form="form" for="email" id="gmail2"></output></p>
+            <p><output form="form" for="email" id="google_drive2"></output></p>
         </form>
         <script>
             const formElement = document.getElementById('form');
             const emailInputElement = document.getElementById('email');
             const gmailOutputElement = document.getElementById('gmail');
             const googleDriveOutputElement = document.getElementById('google_drive');
+            const gmail2OutputElement = document.getElementById('gmail2');
+            const googleDrive2OutputElement = document.getElementById('google_drive2');
 
             function setOutputUrl(element, url) {
                 const anchor = document.createElement("a");
@@ -47,10 +47,20 @@
                     if (!email) {
                         gmailOutputElement.value = "";
                         googleDriveOutputElement.value = "";
+                        gmail2OutputElement.value = "";
+                        googleDrive2OutputElement.value = "";
                         return;
                     }
                     setOutputUrl(gmailOutputElement, `https://mail.google.com/mail/u/${email}`);
                     setOutputUrl(googleDriveOutputElement, `https://drive.google.com/drive/u/${email}`);
+                    setOutputUrl(
+                        gmail2OutputElement,
+                        `https://accounts.google.com/AccountChooser?continue=https%3A%2F%2Fmail.google.com%2Fmail%2Fu%2F%2F&Email=${encodeURIComponent(email)}`
+                    );
+                    setOutputUrl(
+                        googleDrive2OutputElement,
+                        `https://accounts.google.com/AccountChooser?continue=https%3A%2F%2Fdrive.google.com%3Fauthuser%3D%26ogss%3D1%2F&Email=${encodeURIComponent(email)}`
+                    );
                 },
             );
 
