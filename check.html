@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iCloud Private Relay check</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; }
+    code { background: #8882; padding: 0.1em 0.3em; border-radius: 3px; }
+    input { font: inherit; padding: 0.3rem; width: 16rem; max-width: 100%; }
+    button { font: inherit; padding: 0.3rem 0.8rem; }
+    #result { font-size: 1.25rem; font-weight: 600; margin-top: 1rem; }
+    .yes { color: #b45309; }
+    .no { color: #15803d; }
+    .err { color: #b91c1c; }
+    small { color: #666; }
+  </style>
+</head>
+<body>
+  <p><a href="./">&larr; Home</a></p>
+  <h1>iCloud Private Relay check</h1>
+  <p>Your IP: <code id="ip">looking up...</code></p>
+  <div id="result"></div>
+
+  <h2>Check another IP</h2>
+  <form id="form">
+    <input id="manual" placeholder="e.g. 172.224.224.1" autocomplete="off">
+    <button>Check</button>
+  </form>
+
+  <p><small id="meta"></small></p>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    // --- IP parsing ---
+    function parseV4(s) {
+      const p = s.split('.');
+      if (p.length !== 4) return null;
+      let n = 0;
+      for (const x of p) {
+        if (!/^\d{1,3}$/.test(x) || +x > 255) return null;
+        n = n * 256 + +x;
+      }
+      return n;
+    }
+
+    function parseV6(s) {
+      s = s.split('%')[0];
+      if (s.includes('.')) {                       // embedded IPv4, e.g. ::ffff:1.2.3.4
+        const i = s.lastIndexOf(':');
+        const v4 = parseV4(s.slice(i + 1));
+        if (v4 === null) return null;
+        s = s.slice(0, i + 1) + Math.floor(v4 / 65536).toString(16) + ':' + (v4 % 65536).toString(16);
+      }
+      const halves = s.split('::');
+      if (halves.length > 2) return null;
+      const head = halves[0] ? halves[0].split(':') : [];
+      const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+      let groups = head;
+      if (halves.length === 2) {
+        const fill = 8 - head.length - tail.length;
+        if (fill < 1) return null;
+        groups = [...head, ...Array(fill).fill('0'), ...tail];
+      }
+      if (groups.length !== 8) return null;
+      let n = 0n;
+      for (const g of groups) {
+        if (!/^[0-9a-fA-F]{1,4}$/.test(g)) return null;
+        n = (n << 16n) | BigInt('0x' + g);
+      }
+      return n;
+    }
+
+    // --- Range check ---
+    let ranges = null;
+    async function loadRanges() {
+      if (ranges) return ranges;
+      const res = await fetch('cidrs.txt', { cache: 'no-cache' });
+      if (!res.ok) throw new Error('Could not load cidrs.txt');
+      ranges = (await res.text()).split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+      if (!ranges.length) throw new Error('cidrs.txt is empty. Run the "Update ranges" workflow first.');
+      $('meta').textContent = `Checked against ${ranges.length.toLocaleString()} ranges from Apple.`;
+      return ranges;
+    }
+
+    function findMatch(ip, list) {
+      const v4 = parseV4(ip);
+      const v6 = v4 === null ? parseV6(ip) : null;
+      if (v4 === null && v6 === null) return undefined;   // invalid IP
+      for (const cidr of list) {
+        const [net, lenStr] = cidr.split('/');
+        const len = +lenStr;
+        if (v4 !== null) {
+          if (net.includes(':')) continue;
+          const shift = 2 ** (32 - len);
+          if (Math.floor(parseV4(net) / shift) === Math.floor(v4 / shift)) return cidr;
+        } else {
+          if (!net.includes(':')) continue;
+          const shift = BigInt(128 - len);
+          if ((parseV6(net) >> shift) === (v6 >> shift)) return cidr;
+        }
+      }
+      return null;
+    }
+
+    async function check(ip) {
+      const out = $('result');
+      out.className = '';
+      out.textContent = 'Checking...';
+      try {
+        const match = findMatch(ip, await loadRanges());
+        if (match === undefined) {
+          out.className = 'err';
+          out.textContent = 'That is not a valid IP address.';
+        } else if (match) {
+          out.className = 'yes';
+          out.textContent = `Yes. ${ip} is an iCloud Private Relay address (${match}).`;
+        } else {
+          out.className = 'no';
+          out.textContent = `No. ${ip} is not in the iCloud Private Relay list.`;
+        }
+      } catch (e) {
+        out.className = 'err';
+        out.textContent = e.message;
+      }
+    }
+
+    // --- Wire up ---
+    $('form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = $('manual').value.trim();
+      if (v) check(v);
+    });
+
+    fetch('https://api64.ipify.org?format=json')
+      .then((r) => r.json())
+      .then((d) => { $('ip').textContent = d.ip; check(d.ip); })
+      .catch(() => {
+        $('ip').textContent = 'unknown';
+        $('result').className = 'err';
+        $('result').textContent = 'Could not look up your IP. Type one below.';
+      });
+  </script>
+</body>
+</html>
