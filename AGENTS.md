@@ -17,10 +17,10 @@ it sits unmaintained. Every change should be judged against that.
   `package.json`. What's in the repo is exactly what gets served.
 - **No dependencies.** No npm packages, CDN scripts, web fonts, or frameworks.
   Anything that can go away, break, or need patching does not belong here.
-- **Older browsers must work.** Write ES5 JavaScript: `var`, `function`,
-  `XMLHttpRequest`, string concatenation. Don't use `let`/`const`, arrow
-  functions, template literals, `fetch`, `Promise`, `async`/`await`, `BigInt`,
-  `?.`/`??`, spread, or trailing commas in calls. Stick to widely
+- **Older browsers must work.** Write ES6 (ES2015) JavaScript. Use
+  `const`/`let` (never `var`), arrow functions, template literals, `Promise`,
+  and `fetch`. Nothing newer: no `async`/`await`, `BigInt`, `?.`/`??`,
+  optional catch binding, or trailing commas in calls. Stick to widely
   supported CSS too.
 - **Use as few external services as possible.** Each one is something that
   can disappear. If a page needs one, make it fail gracefully.
