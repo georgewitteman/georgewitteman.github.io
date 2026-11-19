@@ -6,53 +6,21 @@
     <title>iCloud Private Relay check</title>
     <style>
       body {
-        font:
-          16px/1.5 system-ui,
-          sans-serif;
+        font-family: system-ui, sans-serif;
+        line-height: 1.5;
         max-width: 40rem;
-        margin: 3rem auto;
+        margin: 2rem auto;
         padding: 0 1rem;
       }
-      code {
-        background: #8882;
-        padding: 0.1em 0.3em;
-        border-radius: 3px;
-      }
-      input {
-        font: inherit;
-        padding: 0.3rem;
-        width: 16rem;
-        max-width: 100%;
-      }
-      button {
-        font: inherit;
-        padding: 0.3rem 0.8rem;
-      }
       .result {
-        font-size: 1.25rem;
-        font-weight: 600;
-        margin: 0.25rem 0 1rem;
-      }
-      .no {
-        color: #b45309;
+        font-weight: bold;
       }
       .yes {
-        color: #15803d;
+        color: green;
       }
+      .no,
       .err {
-        color: #b91c1c;
-      }
-      .none {
-        color: #666;
-      }
-      .location {
-        margin-top: -0.75rem;
-      }
-      .location:empty {
-        display: none;
-      }
-      small {
-        color: #666;
+        color: firebrick;
       }
     </style>
   </head>
@@ -62,12 +30,12 @@
 
     <h2>IPv4</h2>
     <p>Your IP: <code id="ip-v4">looking up...</code></p>
-    <div class="result" id="result-v4"></div>
+    <p class="result" id="result-v4"></p>
     <p id="location-v4"></p>
 
     <h2>IPv6</h2>
     <p>Your IP: <code id="ip-v6">looking up...</code></p>
-    <div class="result" id="result-v6"></div>
+    <p class="result" id="result-v6"></p>
     <p id="location-v6"></p>
 
     <h2>Check another IP</h2>
@@ -75,8 +43,8 @@
       <input id="manual-ip" placeholder="e.g. 172.224.224.1" autocomplete="off" />
       <button>Check</button>
     </form>
-    <div class="result" id="result-manual"></div>
-    <p class="location" id="location-manual"></p>
+    <p class="result" id="result-manual"></p>
+    <p id="location-manual"></p>
 
     <p><small id="meta"></small></p>
 
