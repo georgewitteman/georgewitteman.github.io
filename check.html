@@ -154,7 +154,7 @@
       }
 
       async function fetchRanges() {
-        const response = await fetch("ranges.csv", { cache: "no-cache" });
+        const response = await fetch("ranges.csv");
         if (!response.ok) {
           throw new Error("Could not load ranges.csv");
         }
