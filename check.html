@@ -45,10 +45,10 @@
       .none {
         color: #666;
       }
-      .loc {
+      .location {
         margin-top: -0.75rem;
       }
-      .loc:empty {
+      .location:empty {
         display: none;
       }
       small {
@@ -61,217 +61,276 @@
     <h1>iCloud Private Relay check</h1>
 
     <h2>IPv4</h2>
-    <p>Your IP: <code id="ip4">looking up...</code></p>
-    <div class="result" id="result4"></div>
-    <p class="loc" id="loc4"></p>
+    <p>Your IP: <code id="ip-v4">looking up...</code></p>
+    <div class="result" id="result-v4"></div>
+    <p id="location-v4"></p>
 
     <h2>IPv6</h2>
-    <p>Your IP: <code id="ip6">looking up...</code></p>
-    <div class="result" id="result6"></div>
-    <p class="loc" id="loc6"></p>
+    <p>Your IP: <code id="ip-v6">looking up...</code></p>
+    <div class="result" id="result-v6"></div>
+    <p id="location-v6"></p>
 
     <h2>Check another IP</h2>
-    <form id="form">
-      <input id="manual" placeholder="e.g. 172.224.224.1" autocomplete="off" />
+    <form id="manual-form">
+      <input id="manual-ip" placeholder="e.g. 172.224.224.1" autocomplete="off" />
       <button>Check</button>
     </form>
     <div class="result" id="result-manual"></div>
-    <p class="loc" id="loc-manual"></p>
+    <p class="location" id="location-manual"></p>
 
     <p><small id="meta"></small></p>
 
     <script>
-      const $ = (id) => document.getElementById(id);
+      // ---------------------------------------------------------------
+      // Parsing IP addresses
+      //
+      // An IP is represented as { version: 4 | 6, value: BigInt }.
+      // ---------------------------------------------------------------
 
-      // --- IP parsing ---
-      // IPv4 -> number. IPv6 -> array of 8 16-bit numbers. Invalid -> null.
-      function parseV4(s) {
-        const p = s.split(".");
-        if (p.length !== 4) return null;
-        let n = 0;
-        for (const x of p) {
-          if (!/^\d{1,3}$/.test(x) || +x > 255) return null;
-          n = n * 256 + +x;
+      const BITS = { 4: 32, 6: 128 };
+
+      function parseIp(text) {
+        const ipv4 = parseIpv4(text);
+        if (ipv4 !== null) {
+          return { version: 4, value: ipv4 };
         }
-        return n;
+
+        const ipv6 = parseIpv6(text);
+        if (ipv6 !== null) {
+          return { version: 6, value: ipv6 };
+        }
+
+        return null;
       }
 
-      function parseV6(s) {
-        s = s.split("%")[0];
-        if (s.includes(".")) {
-          // embedded IPv4, e.g. ::ffff:1.2.3.4
-          const i = s.lastIndexOf(":");
-          const v4 = parseV4(s.slice(i + 1));
-          if (v4 === null) return null;
-          s =
-            s.slice(0, i + 1) +
-            Math.floor(v4 / 65536).toString(16) +
-            ":" +
-            (v4 % 65536).toString(16);
+      function parseIpv4(text) {
+        const parts = text.split(".");
+        if (parts.length !== 4) {
+          return null;
         }
-        const halves = s.split("::");
-        if (halves.length > 2) return null;
-        const head = halves[0] ? halves[0].split(":") : [];
-        const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
-        let groups = head;
+
+        let value = 0n;
+        for (const part of parts) {
+          if (!/^\d{1,3}$/.test(part) || Number(part) > 255) {
+            return null;
+          }
+          value = (value << 8n) | BigInt(part);
+        }
+        return value;
+      }
+
+      function parseIpv6(text) {
+        // Drop a zone ID, e.g. "fe80::1%eth0".
+        let address = text.split("%")[0];
+
+        // Turn an embedded IPv4 tail, e.g. "::ffff:1.2.3.4", into two hex groups.
+        if (address.includes(".")) {
+          const lastColon = address.lastIndexOf(":");
+          const ipv4 = parseIpv4(address.slice(lastColon + 1));
+          if (ipv4 === null) {
+            return null;
+          }
+          const high = (ipv4 >> 16n).toString(16);
+          const low = (ipv4 & 0xffffn).toString(16);
+          address = `${address.slice(0, lastColon + 1)}${high}:${low}`;
+        }
+
+        // "::" stands for one or more groups of zeros.
+        const halves = address.split("::");
+        if (halves.length > 2) {
+          return null;
+        }
+
+        let groups = splitGroups(halves[0]);
         if (halves.length === 2) {
-          const fill = 8 - head.length - tail.length;
-          if (fill < 1) return null;
-          groups = [...head, ...Array(fill).fill("0"), ...tail];
+          const tail = splitGroups(halves[1]);
+          const missing = 8 - groups.length - tail.length;
+          if (missing < 1) {
+            return null;
+          }
+          groups = [...groups, ...Array(missing).fill("0"), ...tail];
         }
-        if (groups.length !== 8) return null;
-        if (!groups.every((g) => /^[0-9a-fA-F]{1,4}$/.test(g))) return null;
-        return groups.map((g) => parseInt(g, 16));
+
+        if (groups.length !== 8) {
+          return null;
+        }
+
+        let value = 0n;
+        for (const group of groups) {
+          if (!/^[0-9a-fA-F]{1,4}$/.test(group)) {
+            return null;
+          }
+          value = (value << 16n) | BigInt(`0x${group}`);
+        }
+        return value;
       }
 
-      function sameV6Prefix(a, b, len) {
-        for (let i = 0; i < 8 && len > 0; i++, len -= 16) {
-          const shift = Math.pow(2, 16 - Math.min(len, 16));
-          if (Math.floor(a[i] / shift) !== Math.floor(b[i] / shift))
-            return false;
+      function splitGroups(text) {
+        if (text === "") {
+          return [];
         }
-        return true;
+        return text.split(":");
       }
 
-      // --- Load ranges ---
-      // ranges.csv lines look like: 172.224.226.0/27,GB,GB-EN,London
+      // ---------------------------------------------------------------
+      // Loading Apple's ranges
+      //
+      // Each line of ranges.csv looks like: 172.224.226.0/27,GB,GB-EN,London
+      // ---------------------------------------------------------------
+
       let rangesPromise = null;
+
       function loadRanges() {
-        if (!rangesPromise) rangesPromise = fetchRanges();
+        rangesPromise ??= fetchRanges();
         return rangesPromise;
       }
 
-      function fetchRanges() {
-        return fetch("ranges.csv", { cache: "no-cache" })
-          .then((res) => {
-            if (!res.ok) throw new Error("Could not load ranges.csv");
-            return res.text();
-          })
-          .then((text) => {
-            const ranges = parseRanges(text);
-            if (!ranges.length)
-              throw new Error(
-                'ranges.csv is empty. Run the "Update ranges" workflow first.'
-              );
-            const count = ranges.length.toLocaleString();
-            $("meta").textContent = `Checked against ${count} ranges from Apple.`;
-            return ranges;
-          });
+      async function fetchRanges() {
+        const response = await fetch("ranges.csv", { cache: "no-cache" });
+        if (!response.ok) {
+          throw new Error("Could not load ranges.csv");
+        }
+
+        const ranges = parseRanges(await response.text());
+        if (ranges.length === 0) {
+          throw new Error('ranges.csv is empty. Run the "Update ranges" workflow first.');
+        }
+
+        const count = ranges.length.toLocaleString();
+        document.getElementById("meta").textContent = `Checked against ${count} ranges from Apple.`;
+        return ranges;
       }
 
       function parseRanges(text) {
-        const out = [];
-        for (const raw of text.split("\n")) {
-          const line = raw.trim();
-          if (!line || line.startsWith("#")) continue;
+        const ranges = [];
+
+        for (const rawLine of text.split("\n")) {
+          const line = rawLine.trim();
+          if (line === "" || line.startsWith("#")) {
+            continue;
+          }
+
           const [cidr, country, , city] = line.split(",");
-          const [ip, len] = cidr.split("/");
-          const v6 = ip.includes(":");
-          const net = v6 ? parseV6(ip) : parseV4(ip);
-          if (net === null) continue;
-          out.push({
+          const [address, prefixLength] = cidr.split("/");
+          const network = parseIp(address);
+          if (network === null) {
+            continue;
+          }
+
+          ranges.push({
             cidr,
-            v6,
-            net,
-            len: +len,
+            network,
+            prefixLength: Number(prefixLength),
             city,
             country,
           });
         }
-        return out;
+
+        return ranges;
       }
 
-      // "London, United Kingdom". Falls back to the raw country code.
-      const regionNames = new Intl.DisplayNames(undefined, { type: "region" });
-      function formatLocation(city, country) {
-        let name = country;
-        try {
-          name = regionNames.of(country);
-        } catch (e) {}
-        return [city, name].filter(Boolean).join(", ");
-      }
-
-      // --- Range check ---
-      function findMatch(ip, list) {
-        const v4 = parseV4(ip);
-        const v6 = v4 === null ? parseV6(ip) : null;
-        if (v4 === null && v6 === null) return undefined; // invalid IP
-        for (const r of list) {
-          if (v4 !== null) {
-            if (r.v6) continue;
-            const shift = Math.pow(2, 32 - r.len);
-            if (Math.floor(r.net / shift) === Math.floor(v4 / shift)) return r;
-          } else {
-            if (!r.v6) continue;
-            if (sameV6Prefix(r.net, v6, r.len)) return r;
-          }
+      function rangeContains(range, ip) {
+        if (range.network.version !== ip.version) {
+          return false;
         }
-        return null;
+
+        // Compare only the network bits by shifting off the host bits.
+        const hostBits = BigInt(BITS[ip.version] - range.prefixLength);
+        return range.network.value >> hostBits === ip.value >> hostBits;
       }
 
-      function show(out, className, text) {
-        out.className = "result " + className;
-        out.textContent = text;
+      // Formats as "London, United Kingdom". Falls back to the raw country code.
+      const countryNames = new Intl.DisplayNames(undefined, { type: "region" });
+
+      function formatLocation(range) {
+        let country = range.country;
+        try {
+          country = countryNames.of(range.country);
+        } catch {
+          // Not a valid country code. Keep it as is.
+        }
+        return [range.city, country].filter(Boolean).join(", ") || "unknown";
       }
 
-      function check(ip, out, locEl) {
-        show(out, "", "Checking...");
-        locEl.textContent = "";
-        return loadRanges()
-          .then((list) => {
-            const match = findMatch(ip, list);
-            if (match === undefined) {
-              show(out, "err", "That is not a valid IP address.");
-            } else if (match) {
-              show(
-                out,
-                "yes",
-                `Yes. ${ip} is an iCloud Private Relay address (${match.cidr}).`
-              );
-              locEl.textContent = `Relay location: ${formatLocation(match.city, match.country) || "unknown"}`;
-            } else {
-              show(out, "no", `No. ${ip} is not in the iCloud Private Relay list.`);
-            }
-          })
-          .catch((e) => show(out, "err", e.message));
+      // ---------------------------------------------------------------
+      // Showing results
+      //
+      // Each section ("v4", "v6", "manual") has elements named
+      // result-<section> and location-<section>.
+      // ---------------------------------------------------------------
+
+      function showResult(section, status, message, location = "") {
+        const result = document.getElementById(`result-${section}`);
+        result.className = `result ${status}`;
+        result.textContent = message;
+        document.getElementById(`location-${section}`).textContent = location;
       }
 
-      // --- Look up my own IPv4 and IPv6 ---
+      async function checkIp(section, text) {
+        showResult(section, "", "Checking...");
+
+        const ip = parseIp(text);
+        if (ip === null) {
+          showResult(section, "err", "That is not a valid IP address.");
+          return;
+        }
+
+        let ranges;
+        try {
+          ranges = await loadRanges();
+        } catch (error) {
+          showResult(section, "err", error.message);
+          return;
+        }
+
+        const match = ranges.find((range) => rangeContains(range, ip));
+        if (!match) {
+          showResult(section, "no", `No. ${text} is not in the iCloud Private Relay list.`);
+          return;
+        }
+
+        showResult(
+          section,
+          "yes",
+          `Yes. ${text} is an iCloud Private Relay address (${match.cidr}).`,
+          `Relay location: ${formatLocation(match)}`
+        );
+      }
+
       // api.ipify.org only answers over IPv4. api6.ipify.org only over IPv6.
-      function lookupMine(url, ipEl, out, locEl, missingText) {
-        fetch(url)
-          .then((res) => res.json())
-          .then(
-            (data) => {
-              ipEl.textContent = data.ip;
-              return check(data.ip, out, locEl);
-            },
-            () => {
-              ipEl.textContent = "none";
-              show(out, "none", missingText);
-            }
-          );
+      async function checkMyIp(section, url, missingMessage) {
+        const ipElement = document.getElementById(`ip-${section}`);
+
+        let ip;
+        try {
+          const response = await fetch(url);
+          ip = (await response.json()).ip;
+        } catch {
+          ipElement.textContent = "none";
+          showResult(section, "none", missingMessage);
+          return;
+        }
+
+        ipElement.textContent = ip;
+        await checkIp(section, ip);
       }
 
-      // --- Wire up ---
-      $("form").addEventListener("submit", (e) => {
-        e.preventDefault();
-        const v = $("manual").value.trim();
-        if (v) check(v, $("result-manual"), $("loc-manual"));
+      // ---------------------------------------------------------------
+      // Start
+      // ---------------------------------------------------------------
+
+      document.getElementById("manual-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const text = document.getElementById("manual-ip").value.trim();
+        if (text !== "") {
+          checkIp("manual", text);
+        }
       });
 
-      lookupMine(
-        "https://api.ipify.org?format=json",
-        $("ip4"),
-        $("result4"),
-        $("loc4"),
-        "No IPv4 address found."
-      );
-      lookupMine(
+      checkMyIp("v4", "https://api.ipify.org?format=json", "No IPv4 address found.");
+      checkMyIp(
+        "v6",
         "https://api6.ipify.org?format=json",
-        $("ip6"),
-        $("result6"),
-        $("loc6"),
         "No IPv6 address found. Your network may not support IPv6."
       );
     </script>
