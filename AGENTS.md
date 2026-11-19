@@ -25,6 +25,17 @@ it sits unmaintained. Every change should be judged against that.
   can disappear. If a page needs one, make it fail gracefully.
 - **Keep it minimal.** Small diffs, few files, no abstractions or features
   nobody asked for. Use relative links so the site works under any path.
+  Keep styling minimal too: browser defaults plus a few lines of CSS.
+
+## Code style
+
+Optimize for readability over brevity.
+
+- Always use `{}` for `if`, loops, etc., even for one-line bodies.
+- Never put `return`, `continue`, or `throw` on the same line as its `if`.
+- Use descriptive names (`address`, `prefixLength`), not `s`, `p`, `n`.
+- Prefer early returns and `async`/`await` over nesting and `.then` chains.
+- Group code into commented sections and explain anything non-obvious.
 
 ## Layout
 
