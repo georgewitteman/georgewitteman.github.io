@@ -23,6 +23,10 @@ it sits unmaintained. Every change should be judged against that.
   to be). Never use `var`; use `const`/`let`.
 - **Use as few external services as possible.** Each one is something that
   can disappear. If a page needs one, make it fail gracefully.
+- **Never put untrusted data into HTML.** Write anything from user input,
+  APIs, or data files with `textContent`, never `innerHTML`,
+  `insertAdjacentHTML`, `document.write`, or `eval`. This is the site's main
+  defense against script injection, so headers or CSP aren't needed.
 - **Keep it minimal.** Small diffs, few files, no abstractions or features
   nobody asked for. Use relative links so the site works under any path.
   Keep styling minimal too: browser defaults plus a few lines of CSS.
