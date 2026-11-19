@@ -12,9 +12,11 @@
         margin: 2rem auto;
         padding: 0 1rem;
       }
-      /* iOS Safari zooms in when focusing inputs smaller than 16px. */
-      input {
-        font-size: 16px;
+      /* Form controls default to a smaller font. Match the page instead,
+         which also stops iOS Safari zooming in on focus (it zooms below 16px). */
+      input,
+      button {
+        font: inherit;
       }
       .result {
         font-weight: bold;
