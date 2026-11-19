@@ -178,7 +178,7 @@
             continue;
           }
 
-          const [cidr, country, region, city] = line.split(",");
+          const [cidr, country, region, city] = parseCsvLine(line);
           const [address, prefixText] = cidr.split("/");
           const network = parseIp(address);
           if (network === null) {
@@ -202,6 +202,38 @@
         }
 
         return ranges;
+      }
+
+      // Splits one CSV line into fields. Handles quoted fields such as
+      // "Washington, D.C." and doubled quotes ("") inside them.
+      function parseCsvLine(line) {
+        // Fast path: almost every line has no quotes.
+        if (!line.includes('"')) {
+          return line.split(",");
+        }
+
+        const fields = [];
+        let field = "";
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+
+          if (inQuotes && char === '"' && line[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === "," && !inQuotes) {
+            fields.push(field);
+            field = "";
+          } else {
+            field += char;
+          }
+        }
+
+        fields.push(field);
+        return fields;
       }
 
       function rangeContains(range, ip) {
