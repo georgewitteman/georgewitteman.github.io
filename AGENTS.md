@@ -37,6 +37,21 @@ Optimize for readability over brevity.
 - Prefer early returns and `async`/`await` over nesting and `.then` chains.
 - Group code into commented sections and explain anything non-obvious.
 
+## Keeping this file current
+
+Update this file as part of your change, without being asked, whenever:
+
+- the user states a preference or rule that should apply to future work, or
+- a change makes something here wrong (layout, files, workflows).
+
+Keep it short and easy to scan:
+
+- Edit or replace existing lines rather than appending. Remove anything
+  outdated, redundant, or obvious from the code itself.
+- One idea per bullet, no history or changelogs. Put it in the right section.
+- This is the only guidance file. `CLAUDE.md` and `GEMINI.md` just import it,
+  so don't add content to them.
+
 ## Layout
 
 - `index.html`: home page that links to each tool.
