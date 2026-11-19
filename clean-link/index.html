@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Link cleaner</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        line-height: 1.5;
+        max-width: 40rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      /* Form controls default to a smaller font. Match the page instead,
+         which also stops iOS Safari zooming in on focus (it zooms below 16px). */
+      textarea,
+      button {
+        font: inherit;
+      }
+      textarea {
+        box-sizing: border-box;
+        width: 100%;
+        padding: 0.5rem;
+        resize: vertical;
+      }
+      .result {
+        padding: 0.75rem;
+        border-radius: 0.5rem;
+        background: color-mix(in srgb, currentColor 7%, transparent);
+        font-family: ui-monospace, monospace;
+        overflow-wrap: anywhere;
+      }
+      .muted {
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <p><a href="../">&larr; Home</a></p>
+    <h1>Link cleaner</h1>
+    <p>
+      Paste a link to remove tracking and clutter. Amazon, eBay, Google,
+      YouTube, X, Spotify, and Instagram links are trimmed to just what's
+      needed. Other links lose common tracking parameters like
+      <code>utm_source</code>.
+    </p>
+
+    <textarea id="input" rows="3" placeholder="Paste a link" autocomplete="off" spellcheck="false" autofocus></textarea>
+
+    <p id="error" hidden>That doesn't look like a link.</p>
+
+    <div id="output" hidden>
+      <p class="result"><a id="result" target="_blank" rel="noreferrer"></a></p>
+      <p>
+        <button id="copy" type="button">Copy</button>
+        <span id="summary" class="muted"></span>
+      </p>
+      <p id="short-link-note" class="muted" hidden>
+        This is a short link, which hides the real address. Open it, then
+        paste the full address here to clean it completely.
+      </p>
+    </div>
+
+    <script>
+      // ---------------------------------------------------------------
+      // Helpers
+      //
+      // Every function here returns a new URL and leaves its input alone,
+      // so the original can be compared with the result afterwards.
+      // ---------------------------------------------------------------
+
+      // True for "example.com" itself and any subdomain like "www.example.com".
+      function isSite(hostname, domain) {
+        return hostname === domain || hostname.endsWith("." + domain);
+      }
+
+      // Matches a brand on any country domain, e.g. amazon.com, amazon.de,
+      // amazon.co.uk, and amazon.com.au (with or without "www.").
+      function anyCountryDomain(brand) {
+        return new RegExp("(^|\\.)" + brand + "(\\.[a-z]{2,3}){1,2}$");
+      }
+
+      // Removes parameters whose name is in `names` or starts with one of `prefixes`.
+      function removeParams(url, names, prefixes = []) {
+        const cleaned = new URL(url.href);
+        // Copy the keys first, since deleting while iterating skips entries.
+        for (const key of [...cleaned.searchParams.keys()]) {
+          const isListed = names.includes(key);
+          const hasPrefix = prefixes.some((prefix) => key.startsWith(prefix));
+          if (isListed || hasPrefix) {
+            cleaned.searchParams.delete(key);
+          }
+        }
+        return cleaned;
+      }
+
+      // Keeps only the listed parameters (in that order) and drops the #fragment.
+      function keepOnlyParams(url, names) {
+        const cleaned = new URL(url.origin + url.pathname);
+        for (const name of names) {
+          for (const value of url.searchParams.getAll(name)) {
+            cleaned.searchParams.append(name, value);
+          }
+        }
+        return cleaned;
+      }
+
+      // ---------------------------------------------------------------
+      // Tracking parameters removed from every link
+      //
+      // Sources:
+      // https://github.com/jparise/chrome-utm-stripper
+      // https://github.com/AdguardTeam/AdguardFilters/tree/master/TrackParamFilter/sections
+      // https://github.com/brave/brave-core/blob/master/components/query_filter/utils.cc
+      // https://github.com/mpchadwick/tracking-query-params-registry/blob/master/_data/params.csv
+      // ---------------------------------------------------------------
+
+      const TRACKING_PARAMS = [
+        "ScCid", "_branch_match_id", "_bta_c", "_bta_tid", "_ga", "_gl",
+        "_hsenc", "_hsmi", "_ke", "_kx", "ad_id", "campaign_id", "campid",
+        "customid", "dclid", "dm_i", "ef_id", "epik", "fbclid", "gad_campaignid",
+        "gad_source", "gbraid", "gclid", "gclsrc", "gdffi", "gdfms", "gdftrk",
+        "igsh", "igshid", "irclickid", "li_fat_id", "mc_cid", "mc_eid", "mibextid",
+        "mkcid", "mkevt", "mkrid", "mkt_tok", "mkwid", "msclkid", "ndclid",
+        "oly_anon_id", "oly_enc_id", "pcrid", "redirect_log_mongo_id",
+        "redirect_mongo_id", "rtid", "s_kwcid", "sb_referer_host", "si",
+        "sms_click", "sms_source", "sms_uph", "srsltid", "toolid", "ttclid",
+        "twclid", "vero_id", "vmcid", "wbraid", "wickedid", "yclid",
+      ];
+
+      const TRACKING_PREFIXES = [
+        "utm_", "hsa_", "matomo_", "mtm_", "piwik_", "pk_", "trk_", "tw_",
+      ];
+
+      // ---------------------------------------------------------------
+      // Site rules
+      //
+      // Each rule returns a cleaned URL, or null if the link isn't for that
+      // site. The first rule that matches wins, and the generic tracking
+      // cleanup runs afterwards either way.
+      // ---------------------------------------------------------------
+
+      // Amazon: product pages become https://<host>/dp/<product ID>.
+      const AMAZON_HOST = anyCountryDomain("amazon");
+      const AMAZON_PRODUCT_PATH =
+        /\/(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/ASIN|o\/ASIN)\/([A-Z0-9]{10})(?=\/|$)/i;
+
+      function cleanAmazon(url) {
+        if (!AMAZON_HOST.test(url.hostname)) {
+          return null;
+        }
+
+        const match = url.pathname.match(AMAZON_PRODUCT_PATH);
+        if (match !== null) {
+          const productId = match[1].toUpperCase();
+          return new URL(url.origin + "/dp/" + productId);
+        }
+
+        // Other pages (search, lists, etc.): drop the "/ref=..." path ending
+        // and Amazon's own tracking parameters.
+        const cleaned = removeParams(
+          url,
+          ["ref", "ref_", "crid", "sprefix", "qid", "content-id", "dib", "dib_tag", "linkCode", "linkId", "tag"],
+          ["pd_rd_", "pf_rd_"],
+        );
+        cleaned.pathname = cleaned.pathname.replace(/\/ref=[^/]*$/, "");
+        return cleaned;
+      }
+
+      // eBay: item pages become https://<host>/itm/<item ID>.
+      const EBAY_HOST = anyCountryDomain("ebay");
+      const EBAY_ITEM_PATH = /^\/itm\/(?:[^/]+\/)?(\d+)/;
+
+      function cleanEbay(url) {
+        if (!EBAY_HOST.test(url.hostname)) {
+          return null;
+        }
+
+        const match = url.pathname.match(EBAY_ITEM_PATH);
+        if (match !== null) {
+          return new URL(url.origin + "/itm/" + match[1]);
+        }
+
+        return removeParams(url, ["_trkparms", "_trksid", "amdata", "hash"]);
+      }
+
+      // Google: searches keep only the query and the search type
+      // (images, news, etc.), on the original host.
+      const GOOGLE_HOST = anyCountryDomain("google");
+
+      function cleanGoogle(url) {
+        if (!GOOGLE_HOST.test(url.hostname)) {
+          return null;
+        }
+        if (url.pathname !== "/search" || !url.searchParams.has("q")) {
+          return null;
+        }
+
+        return keepOnlyParams(url, ["q", "tbm", "udm"]);
+      }
+
+      // YouTube: videos keep only the video, start time, and playlist.
+      function cleanYouTube(url) {
+        if (url.hostname === "youtu.be") {
+          return keepOnlyParams(url, ["t"]);
+        }
+        if (!isSite(url.hostname, "youtube.com")) {
+          return null;
+        }
+
+        if (url.pathname === "/watch") {
+          return keepOnlyParams(url, ["v", "t", "list"]);
+        }
+
+        return removeParams(url, ["feature", "pp"]);
+      }
+
+      // X (Twitter): drop the share-tracking parameters.
+      function cleanX(url) {
+        if (!isSite(url.hostname, "x.com") && !isSite(url.hostname, "twitter.com")) {
+          return null;
+        }
+
+        return removeParams(url, ["s", "t", "ref_src", "ref_url"]);
+      }
+
+      // Spotify: links never need parameters.
+      function cleanSpotify(url) {
+        if (url.hostname !== "open.spotify.com") {
+          return null;
+        }
+
+        return keepOnlyParams(url, []);
+      }
+
+      // Instagram: keep only which image in a multi-image post was shared.
+      function cleanInstagram(url) {
+        if (!isSite(url.hostname, "instagram.com")) {
+          return null;
+        }
+
+        return keepOnlyParams(url, ["img_index"]);
+      }
+
+      const SITE_RULES = [
+        cleanAmazon,
+        cleanEbay,
+        cleanGoogle,
+        cleanYouTube,
+        cleanX,
+        cleanSpotify,
+        cleanInstagram,
+      ];
+
+      function cleanUrl(url) {
+        let cleaned = url;
+        for (const rule of SITE_RULES) {
+          const result = rule(url);
+          if (result !== null) {
+            cleaned = result;
+            break;
+          }
+        }
+        return removeParams(cleaned, TRACKING_PARAMS, TRACKING_PREFIXES);
+      }
+
+      // ---------------------------------------------------------------
+      // Reading the input
+      // ---------------------------------------------------------------
+
+      // Short links redirect to the real address, which can only be found by
+      // visiting them, so they can't be fully cleaned here.
+      const SHORT_LINK_HOSTS = [
+        "a.co", "amzn.eu", "amzn.to", "bit.ly", "ebay.us", "search.app",
+        "spotify.link", "t.co",
+      ];
+
+      function isShortLink(url) {
+        return SHORT_LINK_HOSTS.some((host) => isSite(url.hostname, host));
+      }
+
+      // Accepts a bare link ("amazon.com/dp/..."), a full link, or shared
+      // text with a link in it ("Check this out: https://...").
+      // Returns null unless the result is an http(s) link.
+      function parseLink(text) {
+        const trimmed = text.trim();
+        if (trimmed === "") {
+          return null;
+        }
+
+        const embeddedLink = trimmed.match(/https?:\/\/\S+/i);
+        let candidate = trimmed;
+        if (embeddedLink !== null) {
+          candidate = embeddedLink[0];
+        } else if (!trimmed.includes("://")) {
+          candidate = "https://" + trimmed;
+        }
+
+        let url;
+        try {
+          url = new URL(candidate);
+        } catch {
+          return null;
+        }
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+          return null;
+        }
+        return url;
+      }
+
+      // Names of the parameters in `original` that aren't in `cleaned`.
+      function findRemovedParams(original, cleaned) {
+        const removed = new Set();
+        for (const key of original.searchParams.keys()) {
+          if (!cleaned.searchParams.has(key)) {
+            removed.add(key);
+          }
+        }
+        return [...removed];
+      }
+
+      // ---------------------------------------------------------------
+      // Page
+      // ---------------------------------------------------------------
+
+      const inputElement = document.getElementById("input");
+      const errorElement = document.getElementById("error");
+      const outputElement = document.getElementById("output");
+      const resultElement = document.getElementById("result");
+      const copyButton = document.getElementById("copy");
+      const summaryElement = document.getElementById("summary");
+      const shortLinkNote = document.getElementById("short-link-note");
+
+      function render() {
+        const text = inputElement.value;
+        const original = parseLink(text);
+
+        errorElement.hidden = original !== null || text.trim() === "";
+        outputElement.hidden = original === null;
+        if (original === null) {
+          return;
+        }
+
+        const cleaned = cleanUrl(original);
+        // Safe to use as a link: parseLink only allows http(s).
+        resultElement.href = cleaned.href;
+        resultElement.textContent = cleaned.href;
+        renderSummary(original, cleaned);
+        shortLinkNote.hidden = !isShortLink(cleaned);
+      }
+
+      // Shows what changed, e.g. "Removed: utm_source, fbclid", with each
+      // name in a <code> element.
+      function renderSummary(original, cleaned) {
+        if (original.href === cleaned.href) {
+          summaryElement.textContent = "Already clean.";
+          return;
+        }
+
+        const removed = findRemovedParams(original, cleaned);
+        if (removed.length === 0) {
+          summaryElement.textContent = "Shortened.";
+          return;
+        }
+
+        summaryElement.replaceChildren("Removed: ");
+        removed.forEach((name, index) => {
+          if (index > 0) {
+            summaryElement.append(", ");
+          }
+          const code = document.createElement("code");
+          code.textContent = name;
+          summaryElement.append(code);
+        });
+      }
+
+      let copyResetTimer;
+
+      copyButton.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(resultElement.textContent);
+          copyButton.textContent = "Copied";
+        } catch {
+          copyButton.textContent = "Couldn't copy";
+        }
+        clearTimeout(copyResetTimer);
+        copyResetTimer = setTimeout(() => {
+          copyButton.textContent = "Copy";
+        }, 1500);
+      });
+
+      inputElement.addEventListener("input", render);
+      // The browser may restore the textarea's text after a reload.
+      render();
+    </script>
+  </body>
+</html>

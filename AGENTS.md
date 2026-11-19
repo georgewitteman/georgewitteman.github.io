@@ -67,3 +67,6 @@ Keep it short and easy to scan:
   (`cidr,country,region,city,postal`, CSV that may contain quoted fields),
   refreshed daily by `.github/workflows/update-ranges.yml`. If that workflow ever
   stops running, the site still works, just with older data.
+- `clean-link/`: strips tracking and clutter from pasted links. Per-site
+  rules (Amazon, eBay, Google, YouTube, X, Spotify, Instagram) come first,
+  then a generic tracking-parameter list runs on every link.
