@@ -45,6 +45,12 @@
       .none {
         color: #666;
       }
+      .loc {
+        margin-top: -0.75rem;
+      }
+      .loc:empty {
+        display: none;
+      }
       small {
         color: #666;
       }
@@ -57,10 +63,12 @@
     <h2>IPv4</h2>
     <p>Your IP: <code id="ip4">looking up...</code></p>
     <div class="result" id="result4"></div>
+    <p class="loc" id="loc4"></p>
 
     <h2>IPv6</h2>
     <p>Your IP: <code id="ip6">looking up...</code></p>
     <div class="result" id="result6"></div>
+    <p class="loc" id="loc6"></p>
 
     <h2>Check another IP</h2>
     <form id="form">
@@ -68,96 +76,153 @@
       <button>Check</button>
     </form>
     <div class="result" id="result-manual"></div>
+    <p class="loc" id="loc-manual"></p>
 
     <p><small id="meta"></small></p>
 
     <script>
-      const $ = (id) => document.getElementById(id);
+      // Plain ES5 on purpose so this works in older browsers.
+      // No fetch, Promise, BigInt, arrow functions, or template literals.
+      function $(id) {
+        return document.getElementById(id);
+      }
 
       // --- IP parsing ---
+      // IPv4 -> number. IPv6 -> array of 8 16-bit numbers. Invalid -> null.
       function parseV4(s) {
-        const p = s.split(".");
+        var p = s.split(".");
         if (p.length !== 4) return null;
-        let n = 0;
-        for (const x of p) {
-          if (!/^\d{1,3}$/.test(x) || +x > 255) return null;
-          n = n * 256 + +x;
+        var n = 0;
+        for (var i = 0; i < 4; i++) {
+          if (!/^\d{1,3}$/.test(p[i]) || +p[i] > 255) return null;
+          n = n * 256 + +p[i];
         }
         return n;
       }
 
       function parseV6(s) {
         s = s.split("%")[0];
-        if (s.includes(".")) {
+        if (s.indexOf(".") !== -1) {
           // embedded IPv4, e.g. ::ffff:1.2.3.4
-          const i = s.lastIndexOf(":");
-          const v4 = parseV4(s.slice(i + 1));
+          var c = s.lastIndexOf(":");
+          var v4 = parseV4(s.slice(c + 1));
           if (v4 === null) return null;
           s =
-            s.slice(0, i + 1) +
+            s.slice(0, c + 1) +
             Math.floor(v4 / 65536).toString(16) +
             ":" +
             (v4 % 65536).toString(16);
         }
-        const halves = s.split("::");
+        var halves = s.split("::");
         if (halves.length > 2) return null;
-        const head = halves[0] ? halves[0].split(":") : [];
-        const tail =
-          halves.length === 2 && halves[1] ? halves[1].split(":") : [];
-        let groups = head;
+        var head = halves[0] ? halves[0].split(":") : [];
+        var tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+        var groups = head;
         if (halves.length === 2) {
-          const fill = 8 - head.length - tail.length;
+          var fill = 8 - head.length - tail.length;
           if (fill < 1) return null;
-          groups = [...head, ...Array(fill).fill("0"), ...tail];
+          groups = head.slice();
+          for (var f = 0; f < fill; f++) groups.push("0");
+          groups = groups.concat(tail);
         }
         if (groups.length !== 8) return null;
-        let n = 0n;
-        for (const g of groups) {
-          if (!/^[0-9a-fA-F]{1,4}$/.test(g)) return null;
-          n = (n << 16n) | BigInt("0x" + g);
+        var out = [];
+        for (var i = 0; i < 8; i++) {
+          if (!/^[0-9a-fA-F]{1,4}$/.test(groups[i])) return null;
+          out.push(parseInt(groups[i], 16));
         }
-        return n;
+        return out;
+      }
+
+      function sameV6Prefix(a, b, len) {
+        for (var i = 0; i < 8 && len > 0; i++, len -= 16) {
+          var bits = len >= 16 ? 16 : len;
+          var shift = Math.pow(2, 16 - bits);
+          if (Math.floor(a[i] / shift) !== Math.floor(b[i] / shift))
+            return false;
+        }
+        return true;
+      }
+
+      // --- Load ranges ---
+      // ranges.csv lines look like: 172.224.226.0/27,GB,GB-EN,London
+      var ranges = null;
+      var rangesError = null;
+      var waiting = null;
+
+      function loadRanges(cb) {
+        if (ranges || rangesError) return cb(rangesError, ranges);
+        if (waiting) return waiting.push(cb);
+        waiting = [cb];
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "ranges.csv?" + new Date().getTime());
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState !== 4) return;
+          if (xhr.status === 200) {
+            ranges = parseRanges(xhr.responseText);
+            if (!ranges.length)
+              rangesError = new Error(
+                'ranges.csv is empty. Run the "Update ranges" workflow first.'
+              );
+            else
+              $("meta").textContent =
+                "Checked against " +
+                ranges.length.toLocaleString() +
+                " ranges from Apple.";
+          } else {
+            rangesError = new Error("Could not load ranges.csv");
+          }
+          var list = waiting;
+          waiting = null;
+          for (var i = 0; i < list.length; i++) list[i](rangesError, ranges);
+        };
+        xhr.send();
+      }
+
+      function parseRanges(text) {
+        var lines = text.split("\n");
+        var out = [];
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i].replace(/^\s+|\s+$/g, "");
+          if (!line || line.charAt(0) === "#") continue;
+          var cols = line.split(",");
+          var parts = cols[0].split("/");
+          var isV6 = parts[0].indexOf(":") !== -1;
+          var net = isV6 ? parseV6(parts[0]) : parseV4(parts[0]);
+          if (net === null) continue;
+          out.push({
+            cidr: cols[0],
+            v6: isV6,
+            net: net,
+            len: +parts[1],
+            location: formatLocation(cols[3], cols[2], cols[1]),
+          });
+        }
+        return out;
+      }
+
+      function formatLocation(city, region, country) {
+        var parts = [];
+        if (city) parts.push(city);
+        if (region) parts.push(region);
+        if (country && country !== region) parts.push(country);
+        return parts.join(", ");
       }
 
       // --- Range check ---
-      let rangesPromise = null;
-      function loadRanges() {
-        rangesPromise ??= fetchRanges();
-        return rangesPromise;
-      }
-
-      async function fetchRanges() {
-        const res = await fetch("cidrs.txt", { cache: "no-cache" });
-        if (!res.ok) throw new Error("Could not load cidrs.txt");
-        const ranges = (await res.text())
-          .split("\n")
-          .map((l) => l.trim())
-          .filter((l) => l && !l.startsWith("#"));
-        if (!ranges.length)
-          throw new Error(
-            'cidrs.txt is empty. Run the "Update ranges" workflow first.',
-          );
-        const count = ranges.length.toLocaleString();
-        $("meta").textContent = `Checked against ${count} ranges from Apple.`;
-        return ranges;
-      }
-
       function findMatch(ip, list) {
-        const v4 = parseV4(ip);
-        const v6 = v4 === null ? parseV6(ip) : null;
+        var v4 = parseV4(ip);
+        var v6 = v4 === null ? parseV6(ip) : null;
         if (v4 === null && v6 === null) return undefined; // invalid IP
-        for (const cidr of list) {
-          const [net, lenStr] = cidr.split("/");
-          const len = +lenStr;
+        for (var i = 0; i < list.length; i++) {
+          var r = list[i];
           if (v4 !== null) {
-            if (net.includes(":")) continue;
-            const shift = 2 ** (32 - len);
-            if (Math.floor(parseV4(net) / shift) === Math.floor(v4 / shift))
-              return cidr;
+            if (r.v6) continue;
+            var shift = Math.pow(2, 32 - r.len);
+            if (Math.floor(r.net / shift) === Math.floor(v4 / shift)) return r;
           } else {
-            if (!net.includes(":")) continue;
-            const shift = BigInt(128 - len);
-            if (parseV6(net) >> shift === v6 >> shift) return cidr;
+            if (!r.v6) continue;
+            if (sameV6Prefix(r.net, v6, r.len)) return r;
           }
         }
         return null;
@@ -168,64 +233,84 @@
         out.textContent = text;
       }
 
-      async function check(ip, out) {
+      function check(ip, out, locEl) {
         show(out, "", "Checking...");
-        try {
-          const match = findMatch(ip, await loadRanges());
+        if (locEl) locEl.textContent = "";
+        loadRanges(function (err, list) {
+          if (err) return show(out, "err", err.message);
+          var match = findMatch(ip, list);
           if (match === undefined) {
             show(out, "err", "That is not a valid IP address.");
           } else if (match) {
             show(
               out,
               "yes",
-              `Yes. ${ip} is an iCloud Private Relay address (${match}).`,
+              "Yes. " +
+                ip +
+                " is an iCloud Private Relay address (" +
+                match.cidr +
+                ")."
             );
+            if (locEl)
+              locEl.textContent =
+                "Relay location: " + (match.location || "unknown");
           } else {
             show(
               out,
               "no",
-              `No. ${ip} is not in the iCloud Private Relay list.`,
+              "No. " + ip + " is not in the iCloud Private Relay list."
             );
           }
-        } catch (e) {
-          show(out, "err", e.message);
-        }
+        });
       }
 
       // --- Look up my own IPv4 and IPv6 ---
       // api.ipify.org only answers over IPv4. api6.ipify.org only over IPv6.
-      async function lookupMine(url, ipEl, out, missingText) {
-        let ip;
-        try {
-          const res = await fetch(url);
-          ip = (await res.json()).ip;
-        } catch {
+      function lookupMine(url, ipEl, out, locEl, missingText) {
+        function missing() {
           ipEl.textContent = "none";
           show(out, "none", missingText);
-          return;
         }
-        ipEl.textContent = ip;
-        await check(ip, out);
+        var xhr = new XMLHttpRequest();
+        try {
+          xhr.open("GET", url);
+        } catch (e) {
+          return missing();
+        }
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState !== 4) return;
+          var ip = null;
+          try {
+            ip = JSON.parse(xhr.responseText).ip;
+          } catch (e) {}
+          if (xhr.status !== 200 || !ip) return missing();
+          ipEl.textContent = ip;
+          check(ip, out, locEl);
+        };
+        xhr.send();
       }
 
       // --- Wire up ---
-      $("form").addEventListener("submit", (e) => {
-        e.preventDefault();
-        const v = $("manual").value.trim();
-        if (v) check(v, $("result-manual"));
-      });
+      $("form").onsubmit = function (e) {
+        if (e && e.preventDefault) e.preventDefault();
+        var v = $("manual").value.replace(/^\s+|\s+$/g, "");
+        if (v) check(v, $("result-manual"), $("loc-manual"));
+        return false;
+      };
 
       lookupMine(
         "https://api.ipify.org?format=json",
         $("ip4"),
         $("result4"),
-        "No IPv4 address found.",
+        $("loc4"),
+        "No IPv4 address found."
       );
       lookupMine(
         "https://api6.ipify.org?format=json",
         $("ip6"),
         $("result6"),
-        "No IPv6 address found. Your network may not support IPv6.",
+        $("loc6"),
+        "No IPv6 address found. Your network may not support IPv6."
       );
     </script>
   </body>
