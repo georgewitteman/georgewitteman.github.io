@@ -178,7 +178,7 @@
             continue;
           }
 
-          const [cidr, country, , city] = line.split(",");
+          const [cidr, country, region, city] = line.split(",");
           const [address, prefixLength] = cidr.split("/");
           const network = parseIp(address);
           if (network === null) {
@@ -190,6 +190,7 @@
             network,
             prefixLength: Number(prefixLength),
             city,
+            region,
             country,
           });
         }
@@ -207,17 +208,31 @@
         return range.network.value >> hostBits === ip.value >> hostBits;
       }
 
-      // Formats as "London, United Kingdom". Falls back to the raw country code.
+      // Formats as "Los Angeles, CA, United States".
+      function formatLocation(range) {
+        const parts = [range.city, formatRegion(range.region), formatCountry(range.country)];
+        return parts.filter(Boolean).join(", ") || "unknown";
+      }
+
+      // Region codes look like "US-CA". Browsers have no built-in names for
+      // them, so show the part after the dash.
+      function formatRegion(region) {
+        if (!region) {
+          return "";
+        }
+        return region.split("-").pop();
+      }
+
+      // Country codes look like "US". Show the name in the visitor's language,
+      // falling back to the raw code.
       const countryNames = new Intl.DisplayNames(undefined, { type: "region" });
 
-      function formatLocation(range) {
-        let country = range.country;
+      function formatCountry(country) {
         try {
-          country = countryNames.of(range.country);
+          return countryNames.of(country);
         } catch {
-          // Not a valid country code. Keep it as is.
+          return country;
         }
-        return [range.city, country].filter(Boolean).join(", ") || "unknown";
       }
 
       // ---------------------------------------------------------------
