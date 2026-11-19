@@ -16,7 +16,7 @@ jobs:
 
       - name: Download Apple's egress IP list
         run: |
-          curl -fsSL https://mask-api.icloud.com/egress-ip-ranges.csv | cut -d, -f1-4 > ranges.csv
+          curl -fsSL https://mask-api.icloud.com/egress-ip-ranges.csv -o ranges.csv
           test -s ranges.csv
 
       - name: Commit if changed

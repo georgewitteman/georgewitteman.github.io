@@ -57,6 +57,7 @@ Keep it short and easy to scan:
 - `index.html`: home page that links to each tool.
 - `check.html`: checks whether an IP is an iCloud Private Relay address and
   shows the relay's location.
-- `ranges.csv`: Apple's egress ranges (`cidr,country,region,city`), refreshed
-  daily by `.github/workflows/update-ranges.yml`. If that workflow ever
+- `ranges.csv`: Apple's egress ranges, saved as-is
+  (`cidr,country,region,city,postal`, CSV that may contain quoted fields),
+  refreshed daily by `.github/workflows/update-ranges.yml`. If that workflow ever
   stops running, the site still works, just with older data.
