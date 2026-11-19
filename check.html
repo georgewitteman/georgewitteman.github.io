@@ -164,7 +164,7 @@
         for (const raw of text.split("\n")) {
           const line = raw.trim();
           if (!line || line.startsWith("#")) continue;
-          const [cidr, country, region, city] = line.split(",");
+          const [cidr, country, , city] = line.split(",");
           const [ip, len] = cidr.split("/");
           const v6 = ip.includes(":");
           const net = v6 ? parseV6(ip) : parseV4(ip);
@@ -174,16 +174,21 @@
             v6,
             net,
             len: +len,
-            location: formatLocation(city, region, country),
+            city,
+            country,
           });
         }
         return out;
       }
 
-      function formatLocation(city, region, country) {
-        const parts = [city, region];
-        if (country !== region) parts.push(country);
-        return parts.filter(Boolean).join(", ");
+      // "London, United Kingdom". Falls back to the raw country code.
+      const regionNames = new Intl.DisplayNames(undefined, { type: "region" });
+      function formatLocation(city, country) {
+        let name = country;
+        try {
+          name = regionNames.of(country);
+        } catch (e) {}
+        return [city, name].filter(Boolean).join(", ");
       }
 
       // --- Range check ---
@@ -223,7 +228,7 @@
                 "yes",
                 `Yes. ${ip} is an iCloud Private Relay address (${match.cidr}).`
               );
-              locEl.textContent = `Relay location: ${match.location || "unknown"}`;
+              locEl.textContent = `Relay location: ${formatLocation(match.city, match.country) || "unknown"}`;
             } else {
               show(out, "no", `No. ${ip} is not in the iCloud Private Relay list.`);
             }
