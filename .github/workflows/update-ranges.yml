@@ -16,12 +16,12 @@ jobs:
 
       - name: Download Apple's egress IP list
         run: |
-          curl -fsSL https://mask-api.icloud.com/egress-ip-ranges.csv -o ranges.csv
-          test -s ranges.csv
+          curl -fsSL https://mask-api.icloud.com/egress-ip-ranges.csv -o icloud-private-relay/ranges.csv
+          test -s icloud-private-relay/ranges.csv
 
       - name: Commit if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ranges.csv
+          git add icloud-private-relay/ranges.csv
           git diff --cached --quiet || (git commit -m "Update iCloud Private Relay ranges" && git push)

@@ -55,9 +55,11 @@ Keep it short and easy to scan:
 ## Layout
 
 - `index.html`: home page that links to each tool.
-- `check.html`: checks whether an IP is an iCloud Private Relay address and
-  shows the relay's location.
-- `ranges.csv`: Apple's egress ranges, saved as-is
+- Each tool lives in its own folder as `<tool>/index.html`, with its data
+  files beside it, so URLs are `/<tool>/` on any host.
+- `icloud-private-relay/`: checks whether an IP is an iCloud Private Relay
+  address and shows the relay's location.
+- `icloud-private-relay/ranges.csv`: Apple's egress ranges, saved as-is
   (`cidr,country,region,city,postal`, CSV that may contain quoted fields),
   refreshed daily by `.github/workflows/update-ranges.yml`. If that workflow ever
   stops running, the site still works, just with older data.
