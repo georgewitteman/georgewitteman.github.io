@@ -38,6 +38,7 @@ Optimize for readability over brevity.
 - Always use `{}` for `if`, loops, etc., even for one-line bodies.
 - Never put `return`, `continue`, or `throw` on the same line as its `if`.
 - Use descriptive names (`address`, `prefixLength`), not `s`, `p`, `n`.
+  `i` is fine for a plain index loop.
 - Prefer early returns and `async`/`await` over nesting and `.then` chains.
 - Group code into commented sections and explain anything non-obvious.
 - HTML: two-space indent, `<head>` and `<body>` indented inside `<html>`,
