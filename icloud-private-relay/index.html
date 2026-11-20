@@ -83,14 +83,15 @@
           return null;
         }
 
-        let value = 0n;
+        // Plain numbers are much faster than BigInt, and 32 bits fit exactly.
+        let value = 0;
         for (const part of parts) {
           if (!/^\d{1,3}$/.test(part) || Number(part) > 255) {
             return null;
           }
-          value = (value << 8n) | BigInt(part);
+          value = value * 256 + Number(part);
         }
-        return value;
+        return BigInt(value);
       }
 
       function parseIpv6(text) {
@@ -129,14 +130,16 @@
           return null;
         }
 
-        let value = 0n;
+        // Building one BigInt from a hex string is much faster than eight
+        // BigInt shifts.
+        let hex = "";
         for (const group of groups) {
           if (!/^[0-9a-fA-F]{1,4}$/.test(group)) {
             return null;
           }
-          value = (value << 16n) | BigInt(`0x${group}`);
+          hex += group.padStart(4, "0");
         }
-        return value;
+        return BigInt(`0x${hex}`);
       }
 
       function splitGroups(text) {
@@ -150,71 +153,123 @@
       // Loading Apple's ranges
       //
       // Each line of ranges.csv looks like: 172.224.226.0/27,GB,GB-EN,London,<postal>
+      //
+      // Parsing all ~285,000 lines takes a second or more, so lines are parsed
+      // only as checks need them, a little at a time with pauses so the page
+      // stays responsive. A check stops at its first match. Parsed ranges are
+      // kept and shared, so no line is ever parsed twice.
       // ---------------------------------------------------------------
 
-      let rangesPromise = null;
+      // How long to work before pausing so the browser can repaint and
+      // handle input.
+      const WORK_BUDGET_MS = 20;
+
+      let linesPromise = null;
+      // Ranges parsed so far, in file order.
+      const parsedRanges = [];
+      // Index of the first line that hasn't been parsed yet.
+      let nextLine = 0;
+
+      // Returns the first range containing `ip`, or null if none does.
+      async function findRange(ip) {
+        const lines = await loadLines();
+        // Checks started together (like the IPv4 and IPv6 checks on page
+        // load) would otherwise all run before the first repaint.
+        await pause();
+
+        let index = 0;
+        let steps = 0;
+        let deadline = performance.now() + WORK_BUDGET_MS;
+
+        while (index < parsedRanges.length || nextLine < lines.length) {
+          // Check ranges that are already parsed (by this check or another
+          // one running at the same time) before parsing more.
+          if (index < parsedRanges.length) {
+            const range = parsedRanges[index];
+            index++;
+            if (rangeContains(range, ip)) {
+              return range;
+            }
+          } else {
+            const range = parseRangeLine(lines[nextLine]);
+            nextLine++;
+            if (range !== null) {
+              parsedRanges.push(range);
+            }
+          }
+
+          // Reading the clock on every step would slow the loop down.
+          steps++;
+          if (steps % 1000 === 0 && performance.now() >= deadline) {
+            await pause();
+            deadline = performance.now() + WORK_BUDGET_MS;
+          }
+        }
+
+        return null;
+      }
+
+      function pause() {
+        return new Promise((resolve) => setTimeout(resolve));
+      }
 
       // Fetches once and shares the result. A failed fetch is forgotten so
       // the next check tries again instead of repeating the same error.
-      async function loadRanges() {
-        rangesPromise ??= fetchRanges();
+      async function loadLines() {
+        linesPromise ??= fetchLines();
         try {
-          return await rangesPromise;
+          return await linesPromise;
         } catch (error) {
-          rangesPromise = null;
+          linesPromise = null;
           throw error;
         }
       }
 
-      async function fetchRanges() {
+      async function fetchLines() {
         const response = await fetch("ranges.csv");
         if (!response.ok) {
           throw new Error("Could not load ranges.csv");
         }
 
-        const ranges = parseRanges(await response.text());
-        if (ranges.length === 0) {
+        const text = (await response.text()).trim();
+        if (text === "") {
           throw new Error('ranges.csv is empty. Run the "Update ranges" workflow first.');
         }
 
-        const count = ranges.length.toLocaleString();
-        document.getElementById("meta").textContent = `Checked against ${count} ranges from Apple.`;
-        return ranges;
+        const lines = text.split("\n");
+        document.getElementById("meta").textContent =
+          `Checked against ${lines.length.toLocaleString()} ranges from Apple.`;
+        return lines;
       }
 
-      function parseRanges(text) {
-        const ranges = [];
-
-        for (const rawLine of text.split("\n")) {
-          const line = rawLine.trim();
-          if (line === "" || line.startsWith("#")) {
-            continue;
-          }
-
-          const [cidr, country, region, city] = parseCsvLine(line);
-          const [address, prefixText] = cidr.split("/");
-          const network = parseIp(address);
-          if (network === null) {
-            continue;
-          }
-
-          // Skip lines with a missing or impossible prefix, e.g. "/" or "/40" on IPv4.
-          const prefixLength = Number(prefixText);
-          if (!/^\d{1,3}$/.test(prefixText) || prefixLength > BITS[network.version]) {
-            continue;
-          }
-
-          ranges.push({
-            cidr,
-            network,
-            prefixLength,
-            city,
-            region,
-            country,
-          });
+      // Returns null for blank lines, comments, and lines that don't parse.
+      function parseRangeLine(rawLine) {
+        const line = rawLine.trim();
+        if (line === "" || line.startsWith("#")) {
+          return null;
         }
 
-        return ranges;
+        const [cidr, country, region, city] = parseCsvLine(line);
+        const [address, prefixText] = cidr.split("/");
+        const network = parseIp(address);
+        if (network === null) {
+          return null;
+        }
+
+        // Skip lines with a missing or impossible prefix, e.g. "/" or "/40" on IPv4.
+        const prefixLength = Number(prefixText);
+        if (!/^\d{1,3}$/.test(prefixText) || prefixLength > BITS[network.version]) {
+          return null;
+        }
+
+        return {
+          cidr,
+          network,
+          prefixLength,
+          city,
+          region,
+          country,
+        };
       }
 
       // Splits one CSV line into fields. Handles quoted fields such as
@@ -309,16 +364,15 @@
           return;
         }
 
-        let ranges;
+        let match;
         try {
-          ranges = await loadRanges();
+          match = await findRange(ip);
         } catch (error) {
           showResult(section, "err", error.message);
           return;
         }
 
-        const match = ranges.find((range) => rangeContains(range, ip));
-        if (!match) {
+        if (match === null) {
           showResult(section, "no", `No. ${text} is not in the iCloud Private Relay list.`);
           return;
         }
