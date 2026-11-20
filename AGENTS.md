@@ -40,6 +40,9 @@ Optimize for readability over brevity.
 - Use descriptive names (`address`, `prefixLength`), not `s`, `p`, `n`.
 - Prefer early returns and `async`/`await` over nesting and `.then` chains.
 - Group code into commented sections and explain anything non-obvious.
+- HTML: two-space indent, `<head>` and `<body>` indented inside `<html>`,
+  no self-closing slash on void elements (`<meta>`, not `<meta />`), and
+  every form control has a label (`aria-label` is fine).
 - Workflows: no third-party actions (not even `actions/checkout`), just
   shell commands, so there's no action version to keep updated.
 
