@@ -154,9 +154,16 @@
 
       let rangesPromise = null;
 
-      function loadRanges() {
+      // Fetches once and shares the result. A failed fetch is forgotten so
+      // the next check tries again instead of repeating the same error.
+      async function loadRanges() {
         rangesPromise ??= fetchRanges();
-        return rangesPromise;
+        try {
+          return await rangesPromise;
+        } catch (error) {
+          rangesPromise = null;
+          throw error;
+        }
       }
 
       async function fetchRanges() {
