@@ -17,10 +17,11 @@ it sits unmaintained. Every change should be judged against that.
   `package.json`. What's in the repo is exactly what gets served.
 - **No dependencies.** No npm packages, CDN scripts, web fonts, or frameworks.
   Anything that can go away, break, or need patching does not belong here.
-- **Only use Baseline web features.** Any JS, CSS, or HTML feature that MDN
-  marks as Baseline is fine. Don't use features that are experimental,
-  not yet widely supported, unstable, non-standard, or deprecated (or likely
-  to be). Never use `var`; use `const`/`let`.
+- **Only use Baseline "widely available" web features.** Check MDN's
+  Baseline badge; "newly available" is not enough, since older devices that
+  never update won't have it. Don't use features that are experimental,
+  non-standard, or deprecated (or likely to be). Never use `var`; use
+  `const`/`let`.
 - **Use as few external services as possible.** Each one is something that
   can disappear. If a page needs one, make it fail gracefully.
 - **Never put untrusted data into HTML.** Write anything from user input,
