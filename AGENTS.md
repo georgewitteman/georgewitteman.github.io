@@ -40,6 +40,8 @@ Optimize for readability over brevity.
 - Use descriptive names (`address`, `prefixLength`), not `s`, `p`, `n`.
 - Prefer early returns and `async`/`await` over nesting and `.then` chains.
 - Group code into commented sections and explain anything non-obvious.
+- Workflows: no third-party actions (not even `actions/checkout`), just
+  shell commands, so there's no action version to keep updated.
 
 ## Keeping this file current
 

@@ -12,7 +12,12 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      # A plain clone instead of actions/checkout, so there's no action
+      # version to keep updated.
+      - name: Clone the repository
+        env:
+          TOKEN: ${{ github.token }}
+        run: git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" .
 
       - name: Download Apple's egress IP list
         run: |
