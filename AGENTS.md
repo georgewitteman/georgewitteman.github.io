@@ -72,8 +72,9 @@ Keep it short and easy to scan:
   address and shows the relay's location.
 - `icloud-private-relay/ranges.csv`: Apple's egress ranges, saved as-is
   (`cidr,country,region,city,postal`, CSV that may contain quoted fields),
-  refreshed daily by `.github/workflows/update-ranges.yml`. If that workflow ever
-  stops running, the site still works, just with older data.
+  refreshed daily by `.github/workflows/update-ranges.yml`, which rejects a
+  download that doesn't look like the usual list. If that workflow ever stops
+  running or fails, the site still works, just with older data.
 - `clean-link/`: strips tracking and clutter from pasted links. Per-site
   rules (Amazon, eBay, Google, YouTube, X, Spotify, Instagram) come first,
   then a generic tracking-parameter list runs on every link.
