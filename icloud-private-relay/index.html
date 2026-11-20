@@ -386,6 +386,8 @@
       }
 
       // api.ipify.org only answers over IPv4. api6.ipify.org only over IPv6.
+      // A failed lookup can mean the network lacks that IP version or that
+      // ipify is down, and there's no way to tell which.
       async function checkMyIp(section, url, missingMessage) {
         const ipElement = document.getElementById(`ip-${section}`);
 
@@ -393,8 +395,11 @@
         try {
           const response = await fetch(url);
           ip = (await response.json()).ip;
+          if (typeof ip !== "string") {
+            throw new Error("No IP in the response");
+          }
         } catch {
-          ipElement.textContent = "none";
+          ipElement.textContent = "unknown";
           showResult(section, "none", missingMessage);
           return;
         }
@@ -415,11 +420,15 @@
         }
       });
 
-      checkMyIp("v4", "https://api.ipify.org?format=json", "No IPv4 address found.");
+      checkMyIp(
+        "v4",
+        "https://api.ipify.org?format=json",
+        "Couldn't look up your IPv4 address. You can still check an IP below."
+      );
       checkMyIp(
         "v6",
         "https://api6.ipify.org?format=json",
-        "No IPv6 address found. Your network may not support IPv6."
+        "Couldn't look up your IPv6 address. Your network may not support IPv6, or the lookup service may be down."
       );
     </script>
   </body>
