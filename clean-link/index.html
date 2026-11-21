@@ -414,19 +414,64 @@
         pasteRow.hidden = false;
       }
 
+      // Returns the clipboard's text, or "" if it has none.
+      //
+      // read() comes first because it also sees links copied with iOS
+      // "Copy Link" or the Share sheet. Those are stored as a URL rather
+      // than plain text, so readText() returns "" for them. read() reached
+      // Baseline widely available in December 2026; browsers without it
+      // use readText() instead.
+      async function readClipboardText() {
+        if (navigator.clipboard.read) {
+          try {
+            return await readTextFromClipboardItems();
+          } catch {
+            // Fall back to readText() below.
+          }
+        }
+        return await navigator.clipboard.readText();
+      }
+
+      // Prefers plain text, then a copied URL.
+      async function readTextFromClipboardItems() {
+        const items = await navigator.clipboard.read();
+        for (const type of ["text/plain", "text/uri-list"]) {
+          for (const item of items) {
+            if (!item.types.includes(type)) {
+              continue;
+            }
+            const blob = await item.getType(type);
+            const text = await blob.text();
+            if (text.trim() !== "") {
+              return text;
+            }
+          }
+        }
+        return "";
+      }
+
       let pasteResetTimer;
+
+      // Shows a short message on the button, then puts "Paste" back.
+      function showPasteMessage(message) {
+        pasteButton.textContent = message;
+        clearTimeout(pasteResetTimer);
+        pasteResetTimer = setTimeout(() => {
+          pasteButton.textContent = "Paste";
+        }, 1500);
+      }
 
       pasteButton.addEventListener("click", async () => {
         let text;
         try {
-          text = await navigator.clipboard.readText();
+          text = await readClipboardText();
         } catch {
           // The user may have denied clipboard access.
-          pasteButton.textContent = "Couldn't paste";
-          clearTimeout(pasteResetTimer);
-          pasteResetTimer = setTimeout(() => {
-            pasteButton.textContent = "Paste";
-          }, 1500);
+          showPasteMessage("Couldn't paste");
+          return;
+        }
+        if (text.trim() === "") {
+          showPasteMessage("Nothing to paste");
           return;
         }
         inputElement.value = text;
