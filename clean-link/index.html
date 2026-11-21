@@ -40,9 +40,9 @@
     <p><a href="../">&larr; Home</a></p>
     <h1>Link cleaner</h1>
     <p>
-      Paste a link to remove tracking and clutter. Amazon, eBay, Google,
-      YouTube, X, Spotify, and Instagram links are trimmed to just what's
-      needed. Other links lose common tracking parameters like
+      Paste a link to remove tracking and clutter. Amazon, eBay, Google Search
+      and Workspace, YouTube, X, Spotify, and Instagram links are trimmed to
+      just what's needed. Other links lose common tracking parameters like
       <code>utm_source</code>.
     </p>
 
@@ -185,11 +185,25 @@
         return removeParams(url, ["_trkparms", "_trksid", "amdata", "hash"]);
       }
 
-      // Google: searches keep only the query and the search type
-      // (images, news, etc.), on the original host.
+      // Google Workspace: drop account selectors and common URL metadata,
+      // but preserve parameters and fragments needed to open the resource.
+      const GOOGLE_WORKSPACE_HOSTS = [
+        "docs.google.com", "drive.google.com", "calendar.google.com",
+        "sites.google.com", "meet.google.com", "chat.google.com",
+        "mail.google.com", "keep.google.com",
+      ];
+
+      // Google Search: keep only the query and the search type (images, news,
+      // etc.), on the original host.
       const GOOGLE_HOST = anyCountryDomain("google");
 
       function cleanGoogle(url) {
+        if (GOOGLE_WORKSPACE_HOSTS.some((host) => isSite(url.hostname, host))) {
+          const cleaned = removeParams(url, ["usp", "ts"]);
+          cleaned.pathname = cleaned.pathname.replace(/\/u\/\d+(?=\/|$)/g, "");
+          return cleaned;
+        }
+
         if (!GOOGLE_HOST.test(url.hostname)) {
           return null;
         }
