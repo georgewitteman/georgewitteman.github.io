@@ -48,6 +48,8 @@
 
     <textarea id="input" aria-label="Link" rows="3" placeholder="Paste a link" autocomplete="off" spellcheck="false" autofocus></textarea>
 
+    <p id="paste-row" hidden><button id="paste" type="button">Paste</button></p>
+
     <p id="error" hidden>That doesn't look like a link.</p>
 
     <div id="output" hidden>
@@ -345,6 +347,8 @@
       const copyButton = document.getElementById("copy");
       const summaryElement = document.getElementById("summary");
       const shortLinkNote = document.getElementById("short-link-note");
+      const pasteRow = document.getElementById("paste-row");
+      const pasteButton = document.getElementById("paste");
 
       function render() {
         const text = inputElement.value;
@@ -402,6 +406,31 @@
         copyResetTimer = setTimeout(() => {
           copyButton.textContent = "Copy";
         }, 1500);
+      });
+
+      // The paste button stays hidden in browsers that can't read the
+      // clipboard. Pasting into the text box still works there.
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        pasteRow.hidden = false;
+      }
+
+      let pasteResetTimer;
+
+      pasteButton.addEventListener("click", async () => {
+        let text;
+        try {
+          text = await navigator.clipboard.readText();
+        } catch {
+          // The user may have denied clipboard access.
+          pasteButton.textContent = "Couldn't paste";
+          clearTimeout(pasteResetTimer);
+          pasteResetTimer = setTimeout(() => {
+            pasteButton.textContent = "Paste";
+          }, 1500);
+          return;
+        }
+        inputElement.value = text;
+        render();
       });
 
       inputElement.addEventListener("input", render);
