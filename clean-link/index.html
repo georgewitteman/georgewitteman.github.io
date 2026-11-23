@@ -339,10 +339,14 @@
         return cleaned;
       }
 
-      // Linear: issue links drop the title from the path, becoming
-      // https://linear.app/<workspace>/issue/<issue ID>. Linear says the
-      // title is optional. Links to a comment (#...) are kept.
+      // Linear: issue and review links drop the title from the path, becoming
+      // https://linear.app/<workspace>/issue/<issue ID> or
+      // https://linear.app/<workspace>/review/<review ID>. Linear says the
+      // title is optional for issues. Reviews end in a 12-character ID after
+      // the title, which is what Linear looks them up by. Links to a comment
+      // (#...) are kept.
       const LINEAR_ISSUE_PATH = /^(\/[^/]+\/issue\/[a-z0-9]+-\d+)\/[^/]+\/?$/i;
+      const LINEAR_REVIEW_PATH = /^(\/[^/]+\/review\/)[^/]*-([0-9a-f]{12})\/?$/i;
 
       function cleanLinear(url) {
         if (url.hostname !== "linear.app") {
@@ -350,9 +354,13 @@
         }
 
         const cleaned = new URL(url.href);
-        const match = url.pathname.match(LINEAR_ISSUE_PATH);
-        if (match !== null) {
-          cleaned.pathname = match[1];
+        const issueMatch = url.pathname.match(LINEAR_ISSUE_PATH);
+        if (issueMatch !== null) {
+          cleaned.pathname = issueMatch[1];
+        }
+        const reviewMatch = url.pathname.match(LINEAR_REVIEW_PATH);
+        if (reviewMatch !== null) {
+          cleaned.pathname = reviewMatch[1] + reviewMatch[2];
         }
         return cleaned;
       }
