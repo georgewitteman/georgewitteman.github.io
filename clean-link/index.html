@@ -41,8 +41,8 @@
     <h1>Link cleaner</h1>
     <p>
       Paste a link to remove tracking and clutter. Amazon, eBay, Google Search
-      and Workspace, YouTube, X, Spotify, Instagram, and Notion links are
-      trimmed to just what's needed. Other links lose common tracking parameters like
+      and Workspace, YouTube, X, Spotify, Instagram, Notion, LinkedIn, Reddit,
+      Linear, and Figma links are trimmed to just what's needed. Other links lose common tracking parameters like
       <code>utm_source</code>.
     </p>
 
@@ -293,6 +293,81 @@
         return cleaned;
       }
 
+      // LinkedIn: shared posts become https://<host>/feed/update/urn:li:activity:<ID>/
+      // and job posts become https://<host>/jobs/view/<ID>/. Other pages lose
+      // LinkedIn's own tracking parameters.
+      const LINKEDIN_POST_PATH = /^\/posts\/[^/]*-activity-(\d+)-[^/]*\/?$/;
+      const LINKEDIN_JOB_PATH = /^\/jobs\/view\/(?:[^/]*-)?(\d+)\/?$/;
+
+      function cleanLinkedIn(url) {
+        if (!isSite(url.hostname, "linkedin.com")) {
+          return null;
+        }
+
+        const postMatch = url.pathname.match(LINKEDIN_POST_PATH);
+        if (postMatch !== null) {
+          return new URL(url.origin + "/feed/update/urn:li:activity:" + postMatch[1] + "/");
+        }
+
+        const jobMatch = url.pathname.match(LINKEDIN_JOB_PATH);
+        if (jobMatch !== null) {
+          return new URL(url.origin + "/jobs/view/" + jobMatch[1] + "/");
+        }
+
+        return removeParams(url, [
+          "trk", "trkEmail", "trackingId", "refId", "lipi", "rcm", "midToken",
+          "midSig", "eid", "otpToken",
+        ]);
+      }
+
+      // Reddit: post links drop the title from the path, becoming
+      // https://<host>/r/<subreddit>/comments/<post ID>/, and every link
+      // loses the share-tracking parameters. Links to a comment keep their
+      // full path, since the comment ID comes after the title.
+      const REDDIT_POST_PATH = /^(\/r\/[^/]+\/comments\/[a-z0-9]+)\/[^/]+\/?$/i;
+
+      function cleanReddit(url) {
+        if (!isSite(url.hostname, "reddit.com")) {
+          return null;
+        }
+
+        const cleaned = removeParams(url, ["share_id", "rdt"]);
+        const match = url.pathname.match(REDDIT_POST_PATH);
+        if (match !== null) {
+          cleaned.pathname = match[1] + "/";
+        }
+        return cleaned;
+      }
+
+      // Linear: issue links drop the title from the path, becoming
+      // https://linear.app/<workspace>/issue/<issue ID>. Linear says the
+      // title is optional. Links to a comment (#...) are kept.
+      const LINEAR_ISSUE_PATH = /^(\/[^/]+\/issue\/[a-z0-9]+-\d+)\/[^/]+\/?$/i;
+
+      function cleanLinear(url) {
+        if (url.hostname !== "linear.app") {
+          return null;
+        }
+
+        const cleaned = new URL(url.href);
+        const match = url.pathname.match(LINEAR_ISSUE_PATH);
+        if (match !== null) {
+          cleaned.pathname = match[1];
+        }
+        return cleaned;
+      }
+
+      // Figma: drop the sharer's tracking token (t) and user ID (fuid). The
+      // file name stays in the path, and parameters like node-id, which
+      // pick the frame to open, are kept.
+      function cleanFigma(url) {
+        if (!isSite(url.hostname, "figma.com")) {
+          return null;
+        }
+
+        return removeParams(url, ["t", "fuid"]);
+      }
+
       const SITE_RULES = [
         cleanAmazon,
         cleanEbay,
@@ -302,6 +377,10 @@
         cleanSpotify,
         cleanInstagram,
         cleanNotion,
+        cleanLinkedIn,
+        cleanReddit,
+        cleanLinear,
+        cleanFigma,
       ];
 
       function cleanUrl(url) {

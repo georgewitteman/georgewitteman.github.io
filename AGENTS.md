@@ -76,5 +76,6 @@ Keep it short and easy to scan:
   download that doesn't look like the usual list. If that workflow ever stops
   running or fails, the site still works, just with older data.
 - `clean-link/`: strips tracking and clutter from pasted links. Per-site
-  rules (Amazon, eBay, Google, YouTube, X, Spotify, Instagram, Notion) come
-  first, then a generic tracking-parameter list runs on every link.
+  rules (Amazon, eBay, Google, YouTube, X, Spotify, Instagram, Notion,
+  LinkedIn, Reddit, Linear, Figma) come first, then a generic
+  tracking-parameter list runs on every link.
