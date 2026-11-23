@@ -406,7 +406,13 @@
         "spotify.link", "t.co",
       ];
 
+      // Reddit's share links (/r/<subreddit>/s/<code>) work the same way.
+      const REDDIT_SHARE_PATH = /^\/r\/[^/]+\/s\//;
+
       function isShortLink(url) {
+        if (isSite(url.hostname, "reddit.com") && REDDIT_SHARE_PATH.test(url.pathname)) {
+          return true;
+        }
         return SHORT_LINK_HOSTS.some((host) => isSite(url.hostname, host));
       }
 
