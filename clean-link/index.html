@@ -41,8 +41,8 @@
     <h1>Link cleaner</h1>
     <p>
       Paste a link to remove tracking and clutter. Amazon, eBay, Google Search
-      and Workspace, YouTube, X, Spotify, and Instagram links are trimmed to
-      just what's needed. Other links lose common tracking parameters like
+      and Workspace, YouTube, X, Spotify, Instagram, and Notion links are
+      trimmed to just what's needed. Other links lose common tracking parameters like
       <code>utm_source</code>.
     </p>
 
@@ -259,6 +259,40 @@
         return keepOnlyParams(url, ["img_index"]);
       }
 
+      // Notion: page links drop the workspace name and page title, keeping
+      // only the page ID, which is all Notion needs to open the page:
+      // https://app.notion.com/p/<page ID>, or https://www.notion.so/<page ID>
+      // for older links. Database views (?v=), pages opened on top (?p=),
+      // and links to a block (#...) are kept.
+      const NOTION_PAGE_ID = /(?:^|-)([0-9a-f]{32})$/i;
+
+      function cleanNotion(url) {
+        const isOldDomain = isSite(url.hostname, "notion.so");
+        if (!isOldDomain && url.hostname !== "app.notion.com") {
+          return null;
+        }
+
+        const cleaned = removeParams(url, ["pvs", "source"]);
+        // On app.notion.com, only /p/... paths are pages.
+        if (!isOldDomain && !url.pathname.startsWith("/p/")) {
+          return cleaned;
+        }
+
+        // The ID is the last path segment, or the end of it after the title.
+        const lastSegment = url.pathname.split("/").pop();
+        const match = lastSegment.match(NOTION_PAGE_ID);
+        if (match === null) {
+          return cleaned;
+        }
+
+        if (isOldDomain) {
+          cleaned.pathname = "/" + match[1];
+        } else {
+          cleaned.pathname = "/p/" + match[1];
+        }
+        return cleaned;
+      }
+
       const SITE_RULES = [
         cleanAmazon,
         cleanEbay,
@@ -267,6 +301,7 @@
         cleanX,
         cleanSpotify,
         cleanInstagram,
+        cleanNotion,
       ];
 
       function cleanUrl(url) {
