@@ -92,5 +92,6 @@ Keep it short and easy to scan:
   Cloudflare DNS-over-HTTPS JSON APIs and shows where they differ. `?name=`
   prefills and runs a lookup; each lookup (not typing) updates it with
   `replaceState`, except the first one after opening with `?name=`, which
-  pushes so the original entry stays in history. IP WHOIS links go to
-  `bgp.he.net`.
+  pushes so the original entry stays in history. A SERVFAIL is retried
+  with `cd=1` (validation off); if that answers, it's shown as a DNSSEC
+  failure. IP WHOIS links go to `bgp.he.net`.

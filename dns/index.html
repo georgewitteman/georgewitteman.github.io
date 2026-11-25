@@ -82,6 +82,11 @@
           Answers can differ between the two for names behind CDNs or load
           balancers, which hand out different addresses depending on who asks.
         </li>
+        <li>
+          When a signed domain's DNSSEC is broken, the resolvers refuse to
+          answer. The page then asks again with validation turned off and
+          shows that answer with a warning.
+        </li>
         <li>WHOIS links for IP addresses go to Hurricane Electric's BGP Toolkit.</li>
       </ul>
     </details>
@@ -393,10 +398,14 @@
 
       // Returns { resolver, error } if the request failed, otherwise
       // { resolver, error: null, status, validated, comment, records }.
-      async function queryResolver(resolver, name, recordType) {
+      // With checkingDisabled, the resolver skips DNSSEC validation.
+      async function fetchAnswer(resolver, name, recordType, checkingDisabled) {
         const url = new URL(resolver.url);
         url.searchParams.set("name", name);
         url.searchParams.set("type", String(recordType.number));
+        if (checkingDisabled) {
+          url.searchParams.set("cd", "1");
+        }
 
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -447,8 +456,26 @@
         }
       }
 
+      // Validating resolvers answer SERVFAIL when a signed domain's DNSSEC
+      // is broken, the same as for other failures. Asking again with
+      // validation turned off tells them apart: if that gets an answer,
+      // DNSSEC was the problem. That answer is used, marked dnssecFailed.
+      async function queryResolver(resolver, name, recordType) {
+        const outcome = await fetchAnswer(resolver, name, recordType, false);
+        if (outcome.error !== null || outcome.status !== 2) {
+          return outcome;
+        }
+        const unchecked = await fetchAnswer(resolver, name, recordType, true);
+        if (!isAnswer(unchecked)) {
+          return outcome;
+        }
+        // Keep the first comment, which explains what failed.
+        return { ...unchecked, comment: outcome.comment, dnssecFailed: true };
+      }
+
       // NOERROR and NXDOMAIN are real answers (records, or no records).
-      // Anything else is a failure to get an answer.
+      // Anything else is a failure to get an answer. Answers that failed
+      // DNSSEC count too, since they're shown with a warning.
       function isAnswer(outcome) {
         return outcome.error === null && (outcome.status === 0 || outcome.status === 3);
       }
@@ -564,6 +591,13 @@
         for (const outcome of failed) {
           addElement(section, "p", describeProblem(outcome), "problem");
         }
+        for (const outcome of answered.filter((answer) => answer.dnssecFailed === true)) {
+          let warning = outcome.resolver.name + ": failed DNSSEC validation, so this is its answer with validation turned off. It may have been tampered with.";
+          if (outcome.comment) {
+            warning += " " + outcome.comment;
+          }
+          addElement(section, "p", warning, "problem");
+        }
         if (groups.length > 1) {
           addElement(section, "p", "Google and Cloudflare returned different answers.");
         }
@@ -587,18 +621,65 @@
         return outcomes.some((outcome) => isAnswer(outcome) && outcome.records.length > 0);
       }
 
-      function describeDnssec(outcomesByType) {
-        const validatedBy = RESOLVERS.filter((resolver) => {
-          const answered = outcomesByType.flat().filter((outcome) => outcome.resolver === resolver && isAnswer(outcome));
-          return answered.length > 0 && answered.every((outcome) => outcome.validated);
+      // Returns { text, isProblem }, or null if there's nothing to judge by.
+      function describeDnssec(types, outcomesByType) {
+        const failedResolvers = new Set();
+        const unvalidatedTypes = [];
+        let anyAnswered = false;
+        let anyValidated = false;
+        let anyUnvalidated = false;
+
+        types.forEach((recordType, index) => {
+          // DS records come from the parent zone (like .org), so they're
+          // validated even when this name's own signatures are broken.
+          if (recordType.name === "DS") {
+            return;
+          }
+          const answered = outcomesByType[index].filter(isAnswer);
+          if (answered.length === 0) {
+            return;
+          }
+          anyAnswered = true;
+          for (const outcome of answered) {
+            if (outcome.dnssecFailed === true) {
+              failedResolvers.add(outcome.resolver.name);
+            }
+          }
+          if (answered.every((outcome) => outcome.validated)) {
+            anyValidated = true;
+          } else {
+            anyUnvalidated = true;
+            // Only list types with records. Empty ones aren't worth naming.
+            if (answered.some((outcome) => outcome.records.length > 0)) {
+              unvalidatedTypes.push(recordType.name);
+            }
+          }
         });
-        if (validatedBy.length === RESOLVERS.length) {
-          return "DNSSEC: signed and validated by both resolvers.";
+
+        if (failedResolvers.size > 0) {
+          return {
+            text: "DNSSEC: validation failed on " + [...failedResolvers].join(" and ") +
+              ". The domain is signed, but its signatures don't check out, so" +
+              " resolvers that check them refuse to answer. The answers below" +
+              " marked as failing were fetched with validation turned off.",
+            isProblem: true,
+          };
         }
-        if (validatedBy.length === 0) {
-          return "DNSSEC: not validated. The domain probably isn't signed.";
+        if (!anyAnswered) {
+          return null;
         }
-        return "DNSSEC: validated by " + validatedBy[0].name + " only.";
+        if (!anyUnvalidated) {
+          return { text: "DNSSEC: signed and validated.", isProblem: false };
+        }
+        if (!anyValidated) {
+          return { text: "DNSSEC: not validated. The domain probably isn't signed.", isProblem: false };
+        }
+        let text = "DNSSEC: partly validated.";
+        if (unvalidatedTypes.length > 0) {
+          text += " Not validated: " + unvalidatedTypes.join(", ") + ".";
+        }
+        text += " This usually means the name is an alias (CNAME) for a name on a domain that isn't signed.";
+        return { text, isProblem: false };
       }
 
       function renderResults(query, types, outcomesByType, seconds) {
@@ -638,7 +719,10 @@
           "Checked " + typeCount + " with Google and Cloudflare in " + seconds.toFixed(1) +
             " seconds, at " + new Date().toLocaleTimeString() + "."
         );
-        addElement(summary, "p", describeDnssec(outcomesByType));
+        const dnssec = describeDnssec(types, outcomesByType);
+        if (dnssec) {
+          addElement(summary, "p", dnssec.text, dnssec.isProblem ? "problem" : undefined);
+        }
         if (empty.length > 0) {
           addElement(summary, "p", "No records: " + empty.join(", ") + ".", "muted");
         }
