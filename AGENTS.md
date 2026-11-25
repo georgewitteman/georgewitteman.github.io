@@ -84,6 +84,7 @@ Keep it short and easy to scan:
   tracking-parameter list runs on every link.
 - `dns/`: looks up a name's records (or an IP's PTR) with both Google and
   Cloudflare DNS-over-HTTPS JSON APIs and shows where they differ. `?name=`
-  prefills and runs a lookup; typing updates it with `replaceState`, except
-  the first keystroke after opening with `?name=`, which pushes so the
-  original entry stays in history. IP WHOIS links go to `bgp.he.net`.
+  prefills and runs a lookup; each lookup (not typing) updates it with
+  `replaceState`, except the first one after opening with `?name=`, which
+  pushes so the original entry stays in history. IP WHOIS links go to
+  `bgp.he.net`.

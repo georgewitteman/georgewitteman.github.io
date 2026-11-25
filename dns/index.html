@@ -684,23 +684,26 @@
       // ---------------------------------------------------------------
       // Keeping the address bar in sync
       //
-      // Typing replaces the current history entry's ?name= instead of
-      // adding entries, so Back and Forward land on the last typed name.
-      // The one exception: if the page opened with ?name=, the first
-      // keystroke adds a new entry so the original stays in history.
-      // Entries made by typing are marked with { typed: true }.
+      // Each lookup replaces the current history entry's ?name= instead of
+      // adding entries, so Back and Forward land on the last name looked up.
+      // The one exception: if the page opened with ?name=, the first lookup
+      // of a different name adds a new entry so the original stays in
+      // history. Entries made by a lookup are marked with { typed: true }.
       // ---------------------------------------------------------------
 
       function nameFromAddress() {
         return new URLSearchParams(location.search).get("name") || "";
       }
 
-      nameInput.addEventListener("input", () => {
+      function updateAddress(name) {
+        if (name === nameFromAddress()) {
+          return;
+        }
         const url = new URL(location.href);
-        if (nameInput.value === "") {
+        if (name === "") {
           url.searchParams.delete("name");
         } else {
-          url.searchParams.set("name", nameInput.value);
+          url.searchParams.set("name", name);
         }
 
         const isTypedEntry = history.state !== null && history.state.typed === true;
@@ -709,10 +712,11 @@
         } else {
           history.replaceState({ typed: true }, "", url);
         }
-      });
+      }
 
       form.addEventListener("submit", (event) => {
         event.preventDefault();
+        updateAddress(nameInput.value);
         lookUp(nameInput.value);
       });
 
