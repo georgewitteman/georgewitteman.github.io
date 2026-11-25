@@ -601,9 +601,52 @@
 
       // Shows what changed, e.g. "Removed: utm_source, fbclid", with each
       // name in a <code> element.
+      // Says what the Gmail rule changed, e.g. "Replaced the long email ID
+      // with the short one, removed /u/0 and changed #inbox to #all."
+      // Returns "" for links the Gmail rule didn't shorten.
+      function describeGmailChanges(original, cleaned) {
+        if (cleaned.hostname !== "mail.google.com" || !cleaned.hash.startsWith("#all/")) {
+          return "";
+        }
+
+        const changes = [];
+        const originalId = original.hash.split("/").pop();
+        if (GMAIL_LONG_ID.test(originalId)) {
+          changes.push("replaced the long email ID with the short one");
+        }
+        const account = original.pathname.match(/\/u\/\d+/);
+        if (account !== null) {
+          changes.push("removed " + account[0]);
+        }
+        const view = original.hash.slice(1).split("/")[0];
+        if (view !== "all") {
+          changes.push("changed #" + view + " to #all");
+        }
+        const removed = findRemovedParams(original, cleaned);
+        if (removed.length > 0) {
+          changes.push("removed " + removed.join(", "));
+        }
+        if (changes.length === 0) {
+          return "";
+        }
+
+        // Join as "a, b and c", starting with a capital letter.
+        let sentence = changes[changes.length - 1];
+        if (changes.length > 1) {
+          sentence = changes.slice(0, -1).join(", ") + " and " + sentence;
+        }
+        return sentence.charAt(0).toUpperCase() + sentence.slice(1) + ".";
+      }
+
       function renderSummary(original, cleaned) {
         if (original.href === cleaned.href) {
           summaryElement.textContent = "Already clean.";
+          return;
+        }
+
+        const gmailChanges = describeGmailChanges(original, cleaned);
+        if (gmailChanges !== "") {
+          summaryElement.textContent = gmailChanges;
           return;
         }
 
