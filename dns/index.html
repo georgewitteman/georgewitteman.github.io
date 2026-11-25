@@ -223,31 +223,51 @@
       // Formatting
       // ---------------------------------------------------------------
 
-      // 300 becomes "5 minutes", 90061 becomes "1 day 1 hour 1 minute 1 second".
+      // Intl.DurationFormat is newer than everything else on this page, so
+      // where it's missing, durations are shown in plain seconds only.
+      const durationFormat = "DurationFormat" in Intl ? new Intl.DurationFormat("en", { style: "long" }) : null;
+
+      // 300 becomes "5 minutes", 90061 becomes "1 day, 1 hour, 1 minute, 1 second".
+      // Returns null if the browser can't format durations.
       function readableDuration(totalSeconds) {
+        if (durationFormat === null) {
+          return null;
+        }
         if (totalSeconds === 0) {
           return "0 seconds";
         }
+        // DurationFormat doesn't carry seconds over into larger units, so split them here.
         const units = [
-          ["day", 86400],
-          ["hour", 3600],
-          ["minute", 60],
-          ["second", 1],
+          ["days", 86400],
+          ["hours", 3600],
+          ["minutes", 60],
+          ["seconds", 1],
         ];
-        const parts = [];
+        const duration = {};
         let remaining = totalSeconds;
         for (const [unit, size] of units) {
-          const count = Math.floor(remaining / size);
-          if (count > 0) {
-            parts.push(count + " " + unit + (count === 1 ? "" : "s"));
-            remaining -= count * size;
-          }
+          duration[unit] = Math.floor(remaining / size);
+          remaining -= duration[unit] * size;
         }
-        return parts.join(" ");
+        return durationFormat.format(duration);
       }
 
+      // "300 (5 minutes)", or just "300" without DurationFormat.
       function formatTtl(ttl) {
-        return ttl + " (" + readableDuration(ttl) + ")";
+        const readable = readableDuration(ttl);
+        if (readable === null) {
+          return String(ttl);
+        }
+        return ttl + " (" + readable + ")";
+      }
+
+      // "7200 seconds (2 hours)", or just "7200 seconds" without DurationFormat.
+      function formatSeconds(seconds) {
+        const readable = readableDuration(seconds);
+        if (readable === null) {
+          return seconds + " seconds";
+        }
+        return seconds + " seconds (" + readable + ")";
       }
 
       // Cloudflare returns TXT data as quoted strings ("v=spf1 ..." "more"),
@@ -333,10 +353,10 @@
           "Primary server " + withoutTrailingDot(primary),
           "admin " + email,
           "serial " + serial,
-          "refresh every " + readableDuration(Number(refresh)),
-          "retry after " + readableDuration(Number(retry)),
-          "expire after " + readableDuration(Number(expire)),
-          "cache missing names for " + readableDuration(Number(minimum)),
+          "refresh every " + formatSeconds(Number(refresh)),
+          "retry after " + formatSeconds(Number(retry)),
+          "expire after " + formatSeconds(Number(expire)),
+          "cache missing names for " + formatSeconds(Number(minimum)),
         ].join(", ") + ".";
       }
 
