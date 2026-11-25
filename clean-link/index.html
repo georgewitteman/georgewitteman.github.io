@@ -709,18 +709,18 @@
         render();
       });
 
-      // A link can also be passed in the page's address as ?url=<link>, for
-      // example from a bookmark. Links that weren't percent-encoded keep
-      // their own "&" and "#" parts, so everything after "?url=" is used,
-      // not just the url parameter. An encoded link has no plain "://", so
-      // it's decoded first.
+      // A link can also be passed after the page's address as #url=<link>,
+      // for example from a bookmark. It's read from the # part because
+      // browsers never send that to the server, so the link stays on this
+      // device. Everything after "#url=" is used, so a link's own "&" and
+      // "#" parts survive. An encoded link has no plain "://", so it's
+      // decoded first.
       function readLinkFromAddress() {
-        if (!location.search.startsWith("?url=")) {
+        const marker = "#url=";
+        if (!location.hash.startsWith(marker)) {
           return "";
         }
-        // The first "?" in the address is always the start of the query.
-        const marker = "?url=";
-        const value = location.href.slice(location.href.indexOf(marker) + marker.length);
+        const value = location.hash.slice(marker.length);
         if (value.includes("://")) {
           return value;
         }
@@ -732,15 +732,20 @@
         }
       }
 
-      inputElement.addEventListener("input", render);
-
       // A link in the address comes first. Otherwise the browser may
       // restore the textarea's text after a reload.
-      const linkFromAddress = readLinkFromAddress();
-      if (linkFromAddress !== "") {
-        inputElement.value = linkFromAddress;
+      function loadLinkFromAddress() {
+        const link = readLinkFromAddress();
+        if (link !== "") {
+          inputElement.value = link;
+        }
+        render();
       }
-      render();
+
+      inputElement.addEventListener("input", render);
+      // Changing the # part of an open page doesn't reload it, so watch for it.
+      window.addEventListener("hashchange", loadLinkFromAddress);
+      loadLinkFromAddress();
     </script>
   </body>
 </html>
