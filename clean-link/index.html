@@ -298,16 +298,28 @@
         return keepOnlyParams(url, ["q", "tbm", "udm"]);
       }
 
-      // YouTube: videos keep only the video, start time, and playlist.
+      // YouTube: videos become https://youtu.be/<video ID>, YouTube's own
+      // short link, keeping only the start time and playlist. YouTube Music
+      // links stay on music.youtube.com, so they still open in Music.
+      const YOUTUBE_VIDEO_HOSTS = ["youtube.com", "www.youtube.com", "m.youtube.com"];
+      const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
       function cleanYouTube(url) {
         if (url.hostname === "youtu.be") {
-          return keepOnlyParams(url, ["t"]);
+          return keepOnlyParams(url, ["t", "list"]);
         }
         if (!isSite(url.hostname, "youtube.com")) {
           return null;
         }
 
         if (url.pathname === "/watch") {
+          const videoId = url.searchParams.get("v");
+          const isVideoHost = YOUTUBE_VIDEO_HOSTS.includes(url.hostname);
+          if (isVideoHost && videoId !== null && YOUTUBE_VIDEO_ID.test(videoId)) {
+            // Start from the original parameters so t and list carry over.
+            const shortLink = new URL("https://youtu.be/" + videoId + url.search);
+            return keepOnlyParams(shortLink, ["t", "list"]);
+          }
           return keepOnlyParams(url, ["v", "t", "list"]);
         }
 
@@ -537,12 +549,18 @@
       }
 
       // Names of the parameters in `original` that aren't in `cleaned`.
+      // A parameter whose value moved into the path, like YouTube's
+      // v=<video ID> in a youtu.be link, doesn't count as removed.
       function findRemovedParams(original, cleaned) {
         const removed = new Set();
-        for (const key of original.searchParams.keys()) {
-          if (!cleaned.searchParams.has(key)) {
-            removed.add(key);
+        for (const [key, value] of original.searchParams) {
+          if (cleaned.searchParams.has(key)) {
+            continue;
           }
+          if (value !== "" && cleaned.pathname.includes(value)) {
+            continue;
+          }
+          removed.add(key);
         }
         return [...removed];
       }
