@@ -40,9 +40,9 @@
     <p><a href="../">&larr; Home</a></p>
     <h1>Link cleaner</h1>
     <p>
-      Paste a link to remove tracking and clutter. Amazon, eBay, Google Search
-      and Workspace, YouTube, X, Spotify, Instagram, Notion, LinkedIn, Reddit,
-      Linear, and Figma links are trimmed to just what's needed. Other links lose common tracking parameters like
+      Paste a link to remove tracking and clutter. Amazon, eBay, Gmail, Google
+      Search and Workspace, YouTube, X, Spotify, Instagram, Notion, LinkedIn,
+      Reddit, Linear, and Figma links are trimmed to just what's needed. Other links lose common tracking parameters like
       <code>utm_source</code>.
     </p>
 
@@ -61,6 +61,10 @@
       <p id="short-link-note" class="muted" hidden>
         This is a short link, which hides the real address. Open it, then
         paste the full address here to clean it completely.
+      </p>
+      <p id="gmail-note" class="muted" hidden>
+        Gmail links open in your browser's default Google account, so this
+        one won't find the email if it's in a different account.
       </p>
     </div>
 
@@ -185,6 +189,81 @@
         }
 
         return removeParams(url, ["_trkparms", "_trksid", "amdata", "hash"]);
+      }
+
+      // Gmail: links to an email become https://mail.google.com/mail/#all/<ID>.
+      //
+      // Gmail's links put the email's ID after the view name, as in
+      // #inbox/<ID>, #label/<name>/<ID>, or #search/<query>/<ID>. The long
+      // ID is made of consonants: it's the text "msg-f:<number>" or
+      // "thread-f:<number>" written as a base-40 number, and that number in
+      // hex is the short ID Gmail also accepts. #all finds the email
+      // whatever label it has, and dropping /u/<n> opens the browser's
+      // default Google account.
+      //
+      // Links that don't decode cleanly fall through to the Google
+      // Workspace rule below, which only drops /u/<n> and a few parameters.
+      const GMAIL_LONG_ID_ALPHABET = "BCDFGHJKLMNPQRSTVWXZbcdfghjklmnpqrstvwxz";
+      const GMAIL_LONG_ID = /^[BCDFGHJKLMNPQRSTVWXZbcdfghjklmnpqrstvwxz]{20,}$/;
+      const GMAIL_SHORT_ID = /^[0-9a-f]{15,16}$/i;
+      const GMAIL_DECODED_ID = /^(?:msg-f|thread-f):(\d+)$/;
+
+      // Turns a long Gmail ID into the short hex ID, or returns null.
+      function decodeGmailId(longId) {
+        // Read the ID as a base-40 number. It needs BigInt, since it's far
+        // too large for a normal number to hold exactly.
+        let number = 0n;
+        for (const character of longId) {
+          const digit = GMAIL_LONG_ID_ALPHABET.indexOf(character);
+          number = number * 40n + BigInt(digit);
+        }
+
+        // Written as hex bytes, the text is shifted by one hex digit, so
+        // there's an extra "0" at the start and end.
+        let hex = number.toString(16);
+        if (hex.length % 2 === 1) {
+          hex = "0" + hex;
+        }
+        if (!hex.startsWith("0") || !hex.endsWith("0")) {
+          return null;
+        }
+        const textHex = hex.slice(1, -1);
+
+        let text = "";
+        for (let i = 0; i < textHex.length; i += 2) {
+          text += String.fromCharCode(parseInt(textHex.slice(i, i + 2), 16));
+        }
+
+        const match = text.match(GMAIL_DECODED_ID);
+        if (match === null) {
+          return null;
+        }
+        return BigInt(match[1]).toString(16);
+      }
+
+      function cleanGmail(url) {
+        if (url.hostname !== "mail.google.com" || !url.pathname.startsWith("/mail/")) {
+          return null;
+        }
+
+        // The fragment is "<view>/.../<ID>", so the ID is its last part.
+        const fragmentParts = url.hash.slice(1).split("/");
+        if (fragmentParts.length < 2) {
+          return null;
+        }
+        const id = fragmentParts[fragmentParts.length - 1];
+
+        let shortId = null;
+        if (GMAIL_SHORT_ID.test(id)) {
+          shortId = id.toLowerCase();
+        } else if (GMAIL_LONG_ID.test(id)) {
+          shortId = decodeGmailId(id);
+        }
+        if (shortId === null) {
+          return null;
+        }
+
+        return new URL("https://mail.google.com/mail/#all/" + shortId);
       }
 
       // Google Workspace: drop account selectors and common URL metadata,
@@ -379,6 +458,7 @@
       const SITE_RULES = [
         cleanAmazon,
         cleanEbay,
+        cleanGmail,
         cleanGoogle,
         cleanYouTube,
         cleanX,
@@ -475,6 +555,7 @@
       const copyButton = document.getElementById("copy");
       const summaryElement = document.getElementById("summary");
       const shortLinkNote = document.getElementById("short-link-note");
+      const gmailNote = document.getElementById("gmail-note");
       const pasteRow = document.getElementById("paste-row");
       const pasteButton = document.getElementById("paste");
 
@@ -494,6 +575,7 @@
         resultElement.textContent = cleaned.href;
         renderSummary(original, cleaned);
         shortLinkNote.hidden = !isShortLink(cleaned);
+        gmailNote.hidden = cleaned.hostname !== "mail.google.com";
       }
 
       // Shows what changed, e.g. "Removed: utm_source, fbclid", with each

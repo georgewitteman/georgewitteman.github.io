@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Link cleaner tests</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        line-height: 1.5;
+        max-width: 40rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      li {
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <p><a href="./">&larr; Link cleaner</a></p>
+    <h1>Link cleaner tests</h1>
+    <p id="status">Running&hellip;</p>
+    <ol id="results"></ol>
+
+    <script>
+      // ---------------------------------------------------------------
+      // Test cases
+      //
+      // Each input is run through the link cleaner, and the result must
+      // match the expected link exactly.
+      // ---------------------------------------------------------------
+
+      const TEST_CASES = [
+        {
+          name: "Gmail: long msg-f ID becomes the short hex ID",
+          input: "https://mail.google.com/mail/u/0/#all/CXKnWZngLGgsJqcPpfFbhjNqpGksQpKBCbzNKgB",
+          expected: "https://mail.google.com/mail/#all/1a1f5d25c1db57e8",
+        },
+        {
+          name: "Gmail: long thread-f ID becomes the short hex ID",
+          input: "https://mail.google.com/mail/u/0/#inbox/NHgvNZFVxQXXXjLLhnjwJHhDrCXZpSBqsqFmzdsBRSB",
+          expected: "https://mail.google.com/mail/#all/18a2b3c4d5e6f701",
+        },
+        {
+          name: "Gmail: label view becomes #all",
+          input: "https://mail.google.com/mail/u/1/#label/Some+Label/CXKnWZngLGgsJqcPpfFbhjNqpGksQpKBCbzNKgB",
+          expected: "https://mail.google.com/mail/#all/1a1f5d25c1db57e8",
+        },
+        {
+          name: "Gmail: search view becomes #all",
+          input: "https://mail.google.com/mail/u/0/#search/from%3Asomeone/CXKnWZngLGgsJqcPpfFbhjNqpGksQpKBCbzNKgB",
+          expected: "https://mail.google.com/mail/#all/1a1f5d25c1db57e8",
+        },
+        {
+          name: "Gmail: short hex ID is kept",
+          input: "https://mail.google.com/mail/u/0/#sent/1A1F5D25C1DB57E8",
+          expected: "https://mail.google.com/mail/#all/1a1f5d25c1db57e8",
+        },
+        {
+          name: "Gmail: ID that isn't msg-f or thread-f is left alone",
+          input: "https://mail.google.com/mail/u/0/#inbox/KlGwCvzHjBTlsXzjdhvgsV",
+          expected: "https://mail.google.com/mail/#inbox/KlGwCvzHjBTlsXzjdhvgsV",
+        },
+        {
+          name: "Gmail: a view with no email is left alone",
+          input: "https://mail.google.com/mail/u/0/#inbox",
+          expected: "https://mail.google.com/mail/#inbox",
+        },
+      ];
+
+      // ---------------------------------------------------------------
+      // Running the tests
+      //
+      // The cleaner's code lives inside its page, so it's loaded in a
+      // hidden frame and called from there. Browsers only allow that when
+      // both pages come from the same web server, not from file://.
+      // ---------------------------------------------------------------
+
+      const statusElement = document.getElementById("status");
+      const resultsElement = document.getElementById("results");
+
+      function runTests(cleanerWindow) {
+        let failures = 0;
+        for (const testCase of TEST_CASES) {
+          const url = cleanerWindow.parseLink(testCase.input);
+          const actual = cleanerWindow.cleanUrl(url).href;
+          const passed = actual === testCase.expected;
+          if (!passed) {
+            failures += 1;
+          }
+
+          const item = document.createElement("li");
+          item.textContent = (passed ? "Pass: " : "FAIL: ") + testCase.name;
+          if (!passed) {
+            const details = document.createElement("div");
+            details.textContent = "Expected " + testCase.expected + ", got " + actual;
+            item.append(details);
+          }
+          resultsElement.append(item);
+        }
+
+        if (failures === 0) {
+          statusElement.textContent = "All " + TEST_CASES.length + " tests passed.";
+        } else {
+          statusElement.textContent = failures + " of " + TEST_CASES.length + " tests failed.";
+        }
+      }
+
+      const frame = document.createElement("iframe");
+      frame.title = "Link cleaner";
+      frame.hidden = true;
+      frame.addEventListener("load", () => {
+        try {
+          runTests(frame.contentWindow);
+        } catch (error) {
+          statusElement.textContent =
+            "Couldn't run the tests (" + error.message + "). Open this page " +
+            "from a web server, for example python3 -m http.server.";
+        }
+      });
+      frame.src = "index.html";
+      document.body.append(frame);
+    </script>
+  </body>
+</html>

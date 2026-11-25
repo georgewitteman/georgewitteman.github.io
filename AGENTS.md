@@ -76,6 +76,9 @@ Keep it short and easy to scan:
   download that doesn't look like the usual list. If that workflow ever stops
   running or fails, the site still works, just with older data.
 - `clean-link/`: strips tracking and clutter from pasted links. Per-site
-  rules (Amazon, eBay, Google, YouTube, X, Spotify, Instagram, Notion,
-  LinkedIn, Reddit, Linear, Figma) come first, then a generic
+  rules (Amazon, eBay, Gmail, Google, YouTube, X, Spotify, Instagram,
+  Notion, LinkedIn, Reddit, Linear, Figma) come first, then a generic
   tracking-parameter list runs on every link.
+- `clean-link/test.html`: sample links with the expected cleaned result.
+  Add a case when changing a rule. Open it from a local server
+  (`python3 -m http.server`), since browsers block it from `file://`.
