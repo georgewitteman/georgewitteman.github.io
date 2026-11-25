@@ -19,7 +19,9 @@ it sits unmaintained. Every change should be judged against that.
   Anything that can go away, break, or need patching does not belong here.
 - **Only use Baseline "widely available" web features.** Check MDN's
   Baseline badge; "newly available" is not enough, since older devices that
-  never update won't have it. Don't use features that are experimental,
+  never update won't have it. The only exception is `Intl.DurationFormat`
+  in `dns/`, which is checked for first; where it's missing, the readable
+  durations are left out. Don't use features that are experimental,
   non-standard, or deprecated (or likely to be). Never use `var`; use
   `const`/`let`.
 - **Use as few external services as possible.** Each one is something that
@@ -85,3 +87,9 @@ Keep it short and easy to scan:
   rules (Amazon, eBay, Gmail, Google, YouTube, X, Spotify, Instagram,
   Notion, LinkedIn, Reddit, Linear, Figma) come first, then a generic
   tracking-parameter list runs on every link.
+- `dns/`: looks up a name's records (or an IP's PTR) with both Google and
+  Cloudflare DNS-over-HTTPS JSON APIs and shows where they differ. `?name=`
+  prefills and runs a lookup; each lookup (not typing) updates it with
+  `replaceState`, except the first one after opening with `?name=`, which
+  pushes so the original entry stays in history. IP WHOIS links go to
+  `bgp.he.net`.
