@@ -19,9 +19,9 @@ it sits unmaintained. Every change should be judged against that.
   Anything that can go away, break, or need patching does not belong here.
 - **Only use Baseline "widely available" web features.** Check MDN's
   Baseline badge; "newly available" is not enough, since older devices that
-  never update won't have it. The exception is an optional extra the page
-  checks for and works fine without (e.g. `Intl.DurationFormat` in `dns/`,
-  whose readable TTLs are just left out where it's missing). Don't use features that are experimental,
+  never update won't have it. The only exception is `Intl.DurationFormat`
+  in `dns/`, which is checked for first; where it's missing, the readable
+  durations are left out. Don't use features that are experimental,
   non-standard, or deprecated (or likely to be). Never use `var`; use
   `const`/`let`.
 - **Use as few external services as possible.** Each one is something that
