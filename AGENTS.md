@@ -31,6 +31,9 @@ it sits unmaintained. Every change should be judged against that.
 - **Keep it minimal.** Small diffs, few files, no abstractions or features
   nobody asked for. Use relative links so the site works under any path.
   Keep styling minimal too: browser defaults plus a few lines of CSS.
+- **Every page stands alone.** No page loads, frames, or calls code from
+  another page. Each tool's data files are the only exception.
+- **No tests or test pages.** Check changes by hand in a browser instead.
 
 ## Code style
 
@@ -79,6 +82,3 @@ Keep it short and easy to scan:
   rules (Amazon, eBay, Gmail, Google, YouTube, X, Spotify, Instagram,
   Notion, LinkedIn, Reddit, Linear, Figma) come first, then a generic
   tracking-parameter list runs on every link.
-- `clean-link/test.html`: sample links with the expected cleaned result.
-  Add a case when changing a rule. Open it from a local server
-  (`python3 -m http.server`), since browsers block it from `file://`.
