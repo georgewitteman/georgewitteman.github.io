@@ -92,9 +92,9 @@ Keep it short and easy to scan:
   page doesn't write links into the address, so cleaned links stay out of
   browser history.
 - `dns/`: looks up a name's records (or an IP's PTR) with both Google and
-  Cloudflare DNS-over-HTTPS JSON APIs and shows where they differ. `?name=`
-  prefills and runs a lookup; each lookup (not typing) updates it with
-  `replaceState`, except the first one after opening with `?name=`, which
-  pushes so the original entry stays in history. A SERVFAIL is retried
-  with `cd=1` (validation off); if that answers, it's shown as a DNSSEC
-  failure. IP WHOIS links go to `bgp.he.net`.
+  Cloudflare DNS-over-HTTPS JSON APIs and shows where they differ. `?q=`
+  prefills and runs a lookup (short, since it's typed by hand). Each lookup
+  of a new name (not typing) pushes a history entry, except from an empty
+  page, which is replaced; the name is also put in the page title. A
+  SERVFAIL is retried with `cd=1` (validation off); if that answers, it's
+  shown as a DNSSEC failure. IP WHOIS links go to `bgp.he.net`.

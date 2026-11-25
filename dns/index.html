@@ -389,7 +389,7 @@
 
       // Relative, so it works under any path.
       function lookupUrl(name) {
-        return "?name=" + encodeURIComponent(name);
+        return "?q=" + encodeURIComponent(name);
       }
 
       // ---------------------------------------------------------------
@@ -788,15 +788,20 @@
       // ---------------------------------------------------------------
       // Keeping the address bar in sync
       //
-      // Each lookup replaces the current history entry's ?name= instead of
-      // adding entries, so Back and Forward land on the last name looked up.
-      // The one exception: if the page opened with ?name=, the first lookup
-      // of a different name adds a new entry so the original stays in
-      // history. Entries made by a lookup are marked with { typed: true }.
+      // The name looked up is in ?q=. Each lookup of a new name adds a
+      // history entry, so Back returns to the previous name, like a search
+      // page. The first lookup from an empty page replaces it instead, so
+      // Back never lands on an empty form. The name is also in the page
+      // title, so history entries can be told apart.
       // ---------------------------------------------------------------
 
       function nameFromAddress() {
-        return new URLSearchParams(location.search).get("name") || "";
+        return new URLSearchParams(location.search).get("q") || "";
+      }
+
+      function showNameInTitle() {
+        const name = nameFromAddress();
+        document.title = name === "" ? "DNS lookup" : name + " – DNS lookup";
       }
 
       function updateAddress(name) {
@@ -805,17 +810,18 @@
         }
         const url = new URL(location.href);
         if (name === "") {
-          url.searchParams.delete("name");
+          url.searchParams.delete("q");
         } else {
-          url.searchParams.set("name", name);
+          url.searchParams.set("q", name);
         }
 
-        const isTypedEntry = history.state !== null && history.state.typed === true;
-        if (!isTypedEntry && nameFromAddress() !== "") {
-          history.pushState({ typed: true }, "", url);
+        if (nameFromAddress() === "") {
+          history.replaceState(null, "", url);
         } else {
-          history.replaceState({ typed: true }, "", url);
+          history.pushState(null, "", url);
         }
+        // Set after the new entry exists, so the old entry keeps its title.
+        showNameInTitle();
       }
 
       form.addEventListener("submit", (event) => {
@@ -826,6 +832,7 @@
 
       window.addEventListener("popstate", () => {
         nameInput.value = nameFromAddress();
+        showNameInTitle();
         lookUp(nameInput.value);
       });
 
@@ -834,6 +841,7 @@
       // ---------------------------------------------------------------
 
       nameInput.value = nameFromAddress();
+      showNameInTitle();
       if (nameInput.value === "") {
         nameInput.focus();
       } else {
