@@ -69,6 +69,9 @@ Keep it short and easy to scan:
 ## Layout
 
 - `index.html`: home page that links to each tool.
+- `favicon.ico` and `apple-touch-icon.png`: the site icon, a white pixel G
+  on red. Browsers and iOS find them at the site root by themselves, so
+  pages don't link to them.
 - Each tool lives in its own folder as `<tool>/index.html`, with its data
   files beside it, so URLs are `/<tool>/` on any host.
 - `icloud-private-relay/`: checks whether an IP is an iCloud Private Relay
