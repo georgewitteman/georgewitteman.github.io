@@ -709,8 +709,37 @@
         render();
       });
 
+      // A link can also be passed in the page's address as ?url=<link>, for
+      // example from a bookmark. Links that weren't percent-encoded keep
+      // their own "&" and "#" parts, so everything after "?url=" is used,
+      // not just the url parameter. An encoded link has no plain "://", so
+      // it's decoded first.
+      function readLinkFromAddress() {
+        if (!location.search.startsWith("?url=")) {
+          return "";
+        }
+        // The first "?" in the address is always the start of the query.
+        const marker = "?url=";
+        const value = location.href.slice(location.href.indexOf(marker) + marker.length);
+        if (value.includes("://")) {
+          return value;
+        }
+        try {
+          return decodeURIComponent(value);
+        } catch {
+          // Not valid percent-encoding, so use it as written.
+          return value;
+        }
+      }
+
       inputElement.addEventListener("input", render);
-      // The browser may restore the textarea's text after a reload.
+
+      // A link in the address comes first. Otherwise the browser may
+      // restore the textarea's text after a reload.
+      const linkFromAddress = readLinkFromAddress();
+      if (linkFromAddress !== "") {
+        inputElement.value = linkFromAddress;
+      }
       render();
     </script>
   </body>
