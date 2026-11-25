@@ -709,19 +709,15 @@
         render();
       });
 
-      // A link can also be passed after the page's address as #url=<link>,
-      // for example from a bookmark. It's read from the # part because
-      // browsers never send that to the server, so the link stays on this
-      // device. Everything after "#url=" is used, so a link's own "&" and
-      // "#" parts survive. An encoded link has no plain "://", so it's
-      // decoded first.
+      // A link can also be passed after the page's address as #<link>, for
+      // example from a bookmark. It's read from the # part because browsers
+      // never send that to the server, so the link stays on this device.
+      // Everything after the first "#" is used, so a link's own "&" and "#"
+      // parts survive. An encoded link has no plain "://", so it's decoded
+      // first.
       function readLinkFromAddress() {
-        const marker = "#url=";
-        if (!location.hash.startsWith(marker)) {
-          return "";
-        }
-        const value = location.hash.slice(marker.length);
-        if (value.includes("://")) {
+        const value = location.hash.slice(1);
+        if (value === "" || value.includes("://")) {
           return value;
         }
         try {

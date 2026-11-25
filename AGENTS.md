@@ -87,7 +87,7 @@ Keep it short and easy to scan:
 - `clean-link/`: strips tracking and clutter from pasted links. Per-site
   rules (Amazon, eBay, Gmail, Google, YouTube, X, Spotify, Instagram,
   Notion, LinkedIn, Reddit, Linear, Figma) come first, then a generic
-  tracking-parameter list runs on every link. `#url=` prefills the link,
+  tracking-parameter list runs on every link. `#<link>` prefills the link,
   encoded or not; it's in the `#` part so it never reaches the server. The
   page doesn't write links into the address, so cleaned links stay out of
   browser history.
