@@ -218,6 +218,12 @@
             return null;
           }
         }
+        // Names can't have spaces. Some browsers' URL parsers would turn
+        // them into %20 instead of failing.
+        if (/\s/.test(host)) {
+          return null;
+        }
+
         // Drop a prefix length, like the /24 in 192.0.2.0/24.
         host = host.replace(/\/\d{1,3}$/, "");
 
