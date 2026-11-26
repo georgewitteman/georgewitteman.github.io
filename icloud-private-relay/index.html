@@ -135,7 +135,7 @@
         }
 
         // Building one BigInt from a hex string is much faster than eight
-        // BigInt shifts.
+        // BigInt shifts. Each group must be one to four hex digits.
         let hex = "";
         for (const group of groups) {
           if (!/^[0-9a-fA-F]{1,4}$/.test(group)) {
