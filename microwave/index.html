@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Microwave time converter</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        line-height: 1.5;
+        max-width: 40rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      /* Form controls default to a smaller font. Match the page instead,
+         which also stops iOS Safari zooming in on focus (it zooms below 16px). */
+      input,
+      select,
+      button {
+        font: inherit;
+      }
+      label {
+        margin-right: 1rem;
+        white-space: nowrap;
+      }
+      fieldset {
+        margin-bottom: 1rem;
+      }
+      .time {
+        width: 4em;
+        font-size: 1.5rem;
+        text-align: right;
+      }
+      .result {
+        display: block;
+        font-size: 1.5rem;
+        font-weight: bold;
+      }
+      .muted {
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <p><a href="../">&larr; Home</a></p>
+    <h1>Microwave time converter</h1>
+    <p>
+      Enter what the box says to get the power level and time to set on your
+      microwave. Type the time like on a microwave: 2, 3, 0 is 2:30.
+    </p>
+
+    <p>
+      <label>Box wattage <select id="box-watts"></select></label>
+      <label>My microwave <select id="my-watts"></select></label>
+    </p>
+
+    <div id="steps"></div>
+
+    <p><button id="add-step" type="button">Add a step</button></p>
+
+    <p class="muted">
+      Food heats about in proportion to wattage &times; time. Power level 5
+      runs at about half power, so a level below 10 only helps when the box
+      expects a weaker microwave than yours or asks for less than full power.
+    </p>
+
+    <template id="step-template">
+      <fieldset>
+        <legend></legend>
+        <p>
+          <label>Time <input class="time" type="text" inputmode="numeric" autocomplete="off" placeholder="0:00"></label>
+          <label>Power
+            <select class="power">
+              <option value="10">100% (High)</option>
+              <option value="9">90%</option>
+              <option value="8">80%</option>
+              <option value="7">70% (Medium-high)</option>
+              <option value="6">60%</option>
+              <option value="5">50% (Medium)</option>
+              <option value="4">40%</option>
+              <option value="3">30% (Medium-low)</option>
+              <option value="2">20%</option>
+              <option value="1">10% (Low)</option>
+            </select>
+          </label>
+        </p>
+        <p><output class="result"></output></p>
+        <p><button class="remove" type="button">Remove step</button></p>
+      </fieldset>
+    </template>
+
+    <script>
+      const boxWattsSelect = document.getElementById("box-watts");
+      const myWattsSelect = document.getElementById("my-watts");
+      const stepsContainer = document.getElementById("steps");
+      const stepTemplate = document.getElementById("step-template");
+      const addStepButton = document.getElementById("add-step");
+
+      // Boxes and microwaves list wattages in steps of 50, like 700 or 1250.
+      for (let watts = 500; watts <= 1500; watts += 50) {
+        boxWattsSelect.add(new Option(watts + " W", watts));
+        myWattsSelect.add(new Option(watts + " W", watts));
+      }
+
+      // Most microwave meal boxes are written for 1100 W.
+      boxWattsSelect.value = "1100";
+
+      // Remember the user's own microwave on this device. Storage can be
+      // blocked (private browsing, some settings), so fall back quietly.
+      function loadMyWatts() {
+        try {
+          return localStorage.getItem("myWatts") ?? "";
+        } catch {
+          return "";
+        }
+      }
+
+      function saveMyWatts(watts) {
+        try {
+          localStorage.setItem("myWatts", watts);
+        } catch {
+          // Nothing to do; the page still works without remembering.
+        }
+      }
+
+      // A saved value that isn't one of the options leaves nothing selected.
+      myWattsSelect.value = loadMyWatts();
+      if (myWattsSelect.selectedIndex === -1) {
+        myWattsSelect.value = "900";
+      }
+
+      // Keeps only the digits typed, like a microwave keypad: no leading
+      // zeros and at most four digits (99:99). \D matches any non-digit.
+      function timeDigits(text) {
+        return text.replace(/\D/g, "").replace(/^0+/, "").slice(0, 4);
+      }
+
+      // Shows digits the way a microwave does: "5" is 0:05, "230" is 2:30.
+      function formatDigits(digits) {
+        if (digits === "") {
+          return "";
+        }
+        const padded = digits.padStart(3, "0");
+        return padded.slice(0, -2) + ":" + padded.slice(-2);
+      }
+
+      // The last two digits are seconds and the rest are minutes. Like on a
+      // microwave, "90" means 90 seconds.
+      function digitsToSeconds(digits) {
+        const number = Number(digits);
+        return Math.floor(number / 100) * 60 + (number % 100);
+      }
+
+      function formatSeconds(totalSeconds) {
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return minutes + ":" + String(seconds).padStart(2, "0");
+      }
+
+      // Power levels are 1 to 10, where level N runs at about N × 10% of
+      // full power.
+      function convert(boxWatts, boxLevel, boxSeconds, myWatts) {
+        const boxPower = (boxWatts * boxLevel) / 10;
+
+        // Use the level closest to the box's power. A weaker microwave
+        // can't go above 10, so it makes up the difference with time.
+        const closestLevel = Math.round((boxPower / myWatts) * 10);
+        const level = Math.min(10, Math.max(1, closestLevel));
+        const myPower = (myWatts * level) / 10;
+
+        // Food heats by about power × time, so match the box's total.
+        const seconds = Math.round((boxSeconds * boxPower) / myPower);
+        return { level, seconds };
+      }
+
+      function update() {
+        const steps = stepsContainer.querySelectorAll("fieldset");
+        const boxWatts = Number(boxWattsSelect.value);
+        const myWatts = Number(myWattsSelect.value);
+
+        steps.forEach((step, index) => {
+          step.querySelector("legend").textContent = "Step " + (index + 1);
+          step.querySelector(".remove").hidden = steps.length === 1;
+
+          const result = step.querySelector(".result");
+          const digits = timeDigits(step.querySelector(".time").value);
+          const boxSeconds = digitsToSeconds(digits);
+          if (boxSeconds === 0) {
+            result.textContent = "";
+            return;
+          }
+
+          const boxLevel = Number(step.querySelector(".power").value);
+          const setting = convert(boxWatts, boxLevel, boxSeconds, myWatts);
+          result.textContent = "Power " + setting.level + " for " + formatSeconds(setting.seconds);
+        });
+      }
+
+      function addStep() {
+        const step = stepTemplate.content.firstElementChild.cloneNode(true);
+        const timeInput = step.querySelector(".time");
+
+        timeInput.addEventListener("input", () => {
+          timeInput.value = formatDigits(timeDigits(timeInput.value));
+          update();
+        });
+        step.querySelector(".power").addEventListener("change", update);
+        step.querySelector(".remove").addEventListener("click", () => {
+          step.remove();
+          update();
+        });
+
+        stepsContainer.append(step);
+        update();
+        return timeInput;
+      }
+
+      boxWattsSelect.addEventListener("change", update);
+      myWattsSelect.addEventListener("change", () => {
+        saveMyWatts(myWattsSelect.value);
+        update();
+      });
+      addStepButton.addEventListener("click", () => {
+        addStep().focus();
+      });
+
+      addStep().focus();
+    </script>
+  </body>
+</html>
