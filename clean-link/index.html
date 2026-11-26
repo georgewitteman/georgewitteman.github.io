@@ -391,12 +391,15 @@
       }
 
       // Instagram: keep only which image in a multi-image post was shared.
+      // Redirect links on l.instagram.com are left alone.
       //
-      // Example:
+      // Examples:
       //   https://www.instagram.com/p/AbCdEfGhIjK/?igsh=abc123&img_index=2
       //   → https://www.instagram.com/p/AbCdEfGhIjK/?img_index=2
+      //   https://l.instagram.com/?u=https%3A%2F%2Fexample.com%2Fshop&e=AT0example
+      //   → (unchanged)
       function cleanInstagram(url) {
-        if (!isSite(url.hostname, "instagram.com")) {
+        if (!isSite(url.hostname, "instagram.com") || url.hostname === "l.instagram.com") {
           return null;
         }
 
