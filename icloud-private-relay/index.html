@@ -444,28 +444,30 @@
         const hostElement = document.getElementById(`host-${section}`);
         const url = `https://cloudflare-dns.com/dns-query?name=${reverseName(ip)}&type=PTR`;
 
-        let answer;
+        // Everything that reads the answer is inside the try, so an answer
+        // in an unexpected shape shows as a failed lookup instead of
+        // throwing.
+        let hostnames;
         try {
           const response = await fetch(url, { headers: { accept: "application/dns-json" } });
           if (!response.ok) {
             throw new Error("HTTP error " + response.status);
           }
-          answer = await response.json();
+          const answer = await response.json();
+          if (answer.Status !== 0 && answer.Status !== 3) {
+            throw new Error("DNS error " + answer.Status);
+          }
+
+          // `?? []` stands in for an empty list when there's no Answer, and
+          // /\.$/ drops the trailing dot DNS puts on full names.
+          hostnames = (answer.Answer ?? [])
+            .filter((record) => record.type === 12 && typeof record.data === "string")
+            .map((record) => record.data.replace(/\.$/, ""));
         } catch {
           hostElement.textContent = "couldn't look up";
           return;
         }
 
-        if (answer.Status !== 0 && answer.Status !== 3) {
-          hostElement.textContent = "couldn't look up";
-          return;
-        }
-
-        // `?? []` stands in an empty list when there's no Answer, and
-        // /\.$/ drops the trailing dot DNS puts on full names.
-        const hostnames = (answer.Answer ?? [])
-          .filter((record) => record.type === 12 && typeof record.data === "string")
-          .map((record) => record.data.replace(/\.$/, ""));
         hostElement.textContent = hostnames.join(", ") || "none";
       }
 
