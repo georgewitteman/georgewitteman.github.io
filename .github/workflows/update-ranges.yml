@@ -3,7 +3,7 @@ name: Update ranges
 on:
   schedule:
     # Fields are minute, hour, day of month, month, and day of week, in
-    # UTC. A minute past the hour avoids the busy start of each hour.
+    # UTC. A time partway through the hour avoids the busy start of each hour.
     - cron: "17 6 * * *"
   workflow_dispatch:
 
