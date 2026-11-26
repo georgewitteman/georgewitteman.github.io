@@ -174,6 +174,16 @@
 
       // Returns the 8 groups as 4-digit lowercase hex, or null.
       function parseIpv6(text) {
+        // The last two groups can be written as an IPv4 address, like
+        // ::ffff:192.0.2.1 (RFC 4291 section 2.2), so rewrite those in hex.
+        const lastColon = text.lastIndexOf(":");
+        const ipv4 = lastColon === -1 ? null : parseIpv4(text.slice(lastColon + 1));
+        if (ipv4) {
+          const high = (ipv4[0] * 256 + ipv4[1]).toString(16);
+          const low = (ipv4[2] * 256 + ipv4[3]).toString(16);
+          return parseIpv6(text.slice(0, lastColon + 1) + high + ":" + low);
+        }
+
         const halves = text.split("::");
         if (halves.length > 2) {
           return null;
