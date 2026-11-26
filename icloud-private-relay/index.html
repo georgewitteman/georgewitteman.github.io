@@ -388,7 +388,14 @@
         document.getElementById(`location-${section}`).textContent = location;
       }
 
+      // The number of the latest check in each section. A slow earlier check
+      // that finishes after a newer one is ignored, so it can't overwrite
+      // the newer result.
+      const latestCheck = { v4: 0, v6: 0, manual: 0 };
+
       async function checkIp(section, text) {
+        latestCheck[section]++;
+        const checkNumber = latestCheck[section];
         showResult(section, "", "Checking...");
 
         const ip = parseIp(text);
@@ -401,7 +408,13 @@
         try {
           match = await findRange(ip);
         } catch (error) {
-          showResult(section, "err", error.message);
+          if (checkNumber === latestCheck[section]) {
+            showResult(section, "err", error.message);
+          }
+          return;
+        }
+
+        if (checkNumber !== latestCheck[section]) {
           return;
         }
 
