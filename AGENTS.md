@@ -91,10 +91,12 @@ Keep it short and easy to scan:
 - `clean-link/`: strips tracking and clutter from pasted links. Per-site
   rules (Amazon, eBay, Gmail, Google, YouTube, X, Spotify, Instagram,
   Notion, LinkedIn, Reddit, Linear, Figma) come first, then a generic
-  tracking-parameter list runs on every link. `#<link>` prefills the link,
-  encoded or not; it's in the `#` part so it never reaches the server. The
-  page doesn't write links into the address, so cleaned links stay out of
-  browser history.
+  tracking-parameter list runs on every link. A site rule that doesn't
+  recognize a link's format leaves it alone instead of guessing, so when a
+  site changes its links they stop being cleaned rather than break.
+  `#<link>` prefills the link, encoded or not; it's in the `#` part so it
+  never reaches the server. The page doesn't write links into the address,
+  so cleaned links stay out of browser history.
 - `dns/`: looks up a name's records (or an IP's PTR) with both Google and
   Cloudflare DNS-over-HTTPS JSON APIs and shows where they differ. `?q=`
   prefills and runs a lookup (short, since it's typed by hand). Each lookup
