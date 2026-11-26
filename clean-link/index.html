@@ -82,7 +82,9 @@
       }
 
       // Matches a brand on any country domain, e.g. amazon.com, amazon.de,
-      // amazon.co.uk, and amazon.com.au (with or without "www.").
+      // amazon.co.uk, and amazon.com.au (with or without "www."). In the
+      // pattern, (\.[a-z]{2,3}){1,2}$ is one or two endings of two or
+      // three letters, like ".de" or ".co.uk".
       function anyCountryDomain(brand) {
         return new RegExp("(^|\\.)" + brand + "(\\.[a-z]{2,3}){1,2}$");
       }
@@ -115,7 +117,7 @@
       // ---------------------------------------------------------------
       // Tracking parameters removed from every link
       //
-      // Sources:
+      // Collected from these lists:
       // https://github.com/jparise/chrome-utm-stripper
       // https://github.com/AdguardTeam/AdguardFilters/tree/master/TrackParamFilter/sections
       // https://github.com/brave/brave-core/blob/master/components/query_filter/utils.cc
@@ -135,6 +137,7 @@
         "twclid", "vero_id", "vmcid", "wbraid", "wickedid", "yclid",
       ];
 
+      // Any parameter whose name starts with one of these is removed too.
       const TRACKING_PREFIXES = [
         "utm_", "hsa_", "matomo_", "mtm_", "piwik_", "pk_", "trk_", "tw_",
       ];
@@ -163,6 +166,9 @@
       //   https://www.amazon.com/s/ref=nb_sb_noss?k=widget&crid=2XYZ&sprefix=widg
       //   → https://www.amazon.com/s?k=widget
       const AMAZON_HOST = anyCountryDomain("amazon");
+      // The 10-character product ID after any of Amazon's product paths,
+      // like /dp/ or /gp/product/. (?=\/|$) requires a "/" or the end
+      // after the ID, without making it part of the match.
       const AMAZON_PRODUCT_PATH =
         /\/(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/ASIN|o\/ASIN)\/([A-Z0-9]{10})(?=\/|$)/i;
 
@@ -196,6 +202,7 @@
       //   https://www.ebay.com/sch/i.html?_nkw=widget&_trksid=p2047675
       //   → https://www.ebay.com/sch/i.html?_nkw=widget
       const EBAY_HOST = anyCountryDomain("ebay");
+      // /itm/, an optional title segment, then the numeric item ID.
       const EBAY_ITEM_PATH = /^\/itm\/(?:[^/]+\/)?(\d+)/;
 
       function cleanEbay(url) {
@@ -221,8 +228,8 @@
       // finds the email whatever label it has, and dropping /u/<n> opens
       // the browser's default Google account.
       //
-      // Links that don't decode cleanly fall through to the Google
-      // Workspace rule below, which only drops /u/<n> and a few parameters.
+      // Links that don't decode cleanly are left to the Google Workspace
+      // rule below.
       //
       // Examples (the first long ID is "thread-f:<number>", the second
       // "msg-f:<number>" shifted by one hex digit):
@@ -329,6 +336,7 @@
       function cleanGoogle(url) {
         if (GOOGLE_WORKSPACE_HOSTS.some((host) => isSite(url.hostname, host))) {
           const cleaned = removeParams(url, ["usp", "ts"]);
+          // Drop /u/<n>, which picks one of the signed-in accounts.
           cleaned.pathname = cleaned.pathname.replace(/\/u\/\d+(?=\/|$)/g, "");
           return cleaned;
         }
@@ -632,6 +640,7 @@
           return null;
         }
 
+        // \S+ runs to the next whitespace, which ends the link.
         const embeddedLink = trimmed.match(/https?:\/\/\S+/i);
         let candidate = trimmed;
         if (embeddedLink !== null) {
@@ -703,8 +712,6 @@
         gmailNote.hidden = cleaned.hostname !== "mail.google.com";
       }
 
-      // Shows what changed, e.g. "Removed: utm_source, fbclid", with each
-      // name in a <code> element.
       // Says what the Gmail rule changed, e.g. "Replaced the long email ID
       // with the short one, removed /u/0 and changed #inbox to #all."
       // Returns "" for links the Gmail rule didn't shorten.
@@ -742,6 +749,8 @@
         return sentence.charAt(0).toUpperCase() + sentence.slice(1) + ".";
       }
 
+      // Shows what changed, e.g. "Removed: utm_source, fbclid", with each
+      // name in a <code> element.
       function renderSummary(original, cleaned) {
         if (original.href === cleaned.href) {
           summaryElement.textContent = "Already clean.";
@@ -796,9 +805,8 @@
       //
       // read() comes first because it also sees links copied with iOS
       // "Copy Link" or the Share sheet. Those are stored as a URL rather
-      // than plain text, so readText() returns "" for them. read() reached
-      // Baseline widely available in December 2026; browsers without it
-      // use readText() instead.
+      // than plain text, so readText() returns "" for them. Browsers
+      // without read() use readText() instead.
       async function readClipboardText() {
         if (navigator.clipboard.read) {
           try {
