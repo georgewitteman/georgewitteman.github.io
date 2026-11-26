@@ -92,10 +92,6 @@
     </details>
 
     <script>
-      // ---------------------------------------------------------------
-      // Settings
-      // ---------------------------------------------------------------
-
       // Any DNS-over-HTTPS server (RFC 8484) works here.
       const RESOLVERS = [
         { name: "Google", url: "https://dns.google/dns-query" },
@@ -144,10 +140,6 @@
       const nameInput = document.getElementById("name");
       const summary = document.getElementById("summary");
       const results = document.getElementById("results");
-
-      // ---------------------------------------------------------------
-      // Reading what was typed
-      // ---------------------------------------------------------------
 
       function parseIpv4(text) {
         const parts = text.split(".");
@@ -221,10 +213,6 @@
           return null;
         }
       }
-
-      // ---------------------------------------------------------------
-      // Formatting
-      // ---------------------------------------------------------------
 
       // Intl.DurationFormat is newer than everything else on this page, so
       // where it's missing, durations are shown in plain seconds only.
@@ -354,13 +342,6 @@
         return "?q=" + encodeURIComponent(name);
       }
 
-      // ---------------------------------------------------------------
-      // DNS messages
-      //
-      // Queries and answers are binary DNS messages, the same ones DNS has
-      // always sent (RFC 1035), carried over HTTPS (RFC 8484).
-      // ---------------------------------------------------------------
-
       // Header flag bits: RD asks the server to look the name up, AD asks
       // it to say whether DNSSEC validated the answer (RFC 6840 section
       // 5.7), and CD turns validation off.
@@ -408,6 +389,8 @@
         return bytes;
       }
 
+      // A binary DNS message (RFC 1035), the same kind DNS has always sent,
+      // which DNS-over-HTTPS carries as is (RFC 8484).
       function buildQuery(name, typeNumber, checkingDisabled) {
         let flags = FLAG_RECURSION_DESIRED | FLAG_AUTHENTIC_DATA;
         if (checkingDisabled) {
@@ -829,10 +812,6 @@
         };
       }
 
-      // ---------------------------------------------------------------
-      // Querying
-      // ---------------------------------------------------------------
-
       // Returns { resolver, error } if the request failed, otherwise
       // { resolver, error: null, status, validated, comment, records }.
       // With checkingDisabled, the resolver skips DNSSEC validation.
@@ -919,10 +898,6 @@
         return text;
       }
 
-      // ---------------------------------------------------------------
-      // Combining the two resolvers' answers
-      // ---------------------------------------------------------------
-
       // Turns one resolver's records into list items, each with its TTLs.
       function itemsFromOutcome(recordType, outcome) {
         return outcome.records.map((record) => ({
@@ -959,10 +934,6 @@
         // Numeric sorting puts "5 mx2" before "10 mx1" and orders IPs sensibly.
         return [...items].sort((a, b) => a.data.localeCompare(b.data, undefined, { numeric: true }));
       }
-
-      // ---------------------------------------------------------------
-      // Showing results
-      // ---------------------------------------------------------------
 
       function describeTtls(ttls) {
         const allSame = ttls.every((entry) => entry.ttl === ttls[0].ttl);
@@ -1211,25 +1182,20 @@
         renderResults(query, types, outcomesByType, (performance.now() - started) / 1000);
       }
 
-      // ---------------------------------------------------------------
-      // Keeping the address bar in sync
-      //
-      // The name looked up is in ?q=. Each lookup of a new name adds a
-      // history entry, so Back returns to the previous name, like a search
-      // page. The first lookup from an empty page replaces it instead, so
-      // Back never lands on an empty form. The name is also in the page
-      // title, so history entries can be told apart.
-      // ---------------------------------------------------------------
-
       function nameFromAddress() {
         return new URLSearchParams(location.search).get("q") || "";
       }
 
+      // The name in the title tells history entries apart.
       function showNameInTitle() {
         const name = nameFromAddress();
         document.title = name === "" ? "DNS lookup" : name + " – DNS lookup";
       }
 
+      // Puts the name in ?q=. Each lookup of a new name adds a history
+      // entry, so Back returns to the previous name, like a search page.
+      // The first lookup from an empty page replaces it instead, so Back
+      // never lands on an empty form.
       function updateAddress(name) {
         if (name === nameFromAddress()) {
           return;
@@ -1261,10 +1227,6 @@
         showNameInTitle();
         lookUp(nameInput.value);
       });
-
-      // ---------------------------------------------------------------
-      // Start
-      // ---------------------------------------------------------------
 
       nameInput.value = nameFromAddress();
       showNameInTitle();
