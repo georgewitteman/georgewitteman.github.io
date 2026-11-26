@@ -992,6 +992,14 @@
         }
       }
 
+      function describeDnssecFailure(outcome) {
+        let warning = "Failed DNSSEC validation, so this is the answer with validation turned off. It may have been tampered with.";
+        if (outcome.comment) {
+          warning += " " + outcome.comment;
+        }
+        return warning;
+      }
+
       function renderSection(recordType, outcome, queryName) {
         const recordCount = isAnswer(outcome) ? outcome.records.length : 0;
 
@@ -1005,11 +1013,7 @@
           return;
         }
         if (outcome.dnssecFailed === true) {
-          let warning = "Failed DNSSEC validation, so this is the answer with validation turned off. It may have been tampered with.";
-          if (outcome.comment) {
-            warning += " " + outcome.comment;
-          }
-          addElement(section, "p", warning, "problem");
+          addElement(section, "p", describeDnssecFailure(outcome), "problem");
         }
 
         const list = addElement(section, "ul", undefined, "records");
@@ -1084,6 +1088,11 @@
         const responses = outcomes.filter((outcome) => outcome.error === null);
         if (responses.length > 0 && responses.every((outcome) => outcome.status === 3)) {
           addElement(summary, "p", queryName + " doesn't exist (NXDOMAIN).", "problem");
+          // When DNSSEC failed, that answer was fetched with validation turned off.
+          const dnssecFailure = responses.find((outcome) => outcome.dnssecFailed === true);
+          if (dnssecFailure) {
+            addElement(summary, "p", describeDnssecFailure(dnssecFailure), "problem");
+          }
           return;
         }
         if (responses.length === 0) {
