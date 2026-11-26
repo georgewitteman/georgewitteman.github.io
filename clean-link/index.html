@@ -610,6 +610,37 @@
         return SHORT_LINK_HOSTS.some((host) => isSite(url.hostname, host));
       }
 
+      // Closing brackets, and the opening bracket each one pairs with.
+      const MATCHING_OPENERS = { ")": "(", "]": "[", ">": "<" };
+
+      // Removes punctuation that ends a sentence or wraps a link, like the
+      // "." in "see https://example.com." or the ")" in "(https://example.com)".
+      // A closing bracket stays if the link has an opener for it, as in
+      // https://en.wikipedia.org/wiki/Example_(disambiguation).
+      function trimTrailingPunctuation(link) {
+        let trimmed = link;
+        while (trimmed !== "") {
+          const last = trimmed.charAt(trimmed.length - 1);
+          if (".,;:!?'\"".includes(last)) {
+            trimmed = trimmed.slice(0, -1);
+            continue;
+          }
+
+          const opener = MATCHING_OPENERS[last];
+          if (opener === undefined) {
+            break;
+          }
+          // Splitting on a character gives one more piece than it appears.
+          const openerCount = trimmed.split(opener).length - 1;
+          const closerCount = trimmed.split(last).length - 1;
+          if (closerCount <= openerCount) {
+            break;
+          }
+          trimmed = trimmed.slice(0, -1);
+        }
+        return trimmed;
+      }
+
       // Accepts a bare link ("amazon.com/dp/..."), a full link, or shared
       // text with a link in it ("Check this out: https://...").
       // Returns null unless the result is an http(s) link.
@@ -623,7 +654,7 @@
         const embeddedLink = trimmed.match(/https?:\/\/\S+/i);
         let candidate = trimmed;
         if (embeddedLink !== null) {
-          candidate = embeddedLink[0];
+          candidate = trimTrailingPunctuation(embeddedLink[0]);
         } else if (!trimmed.includes("://")) {
           candidate = "https://" + trimmed;
         }
