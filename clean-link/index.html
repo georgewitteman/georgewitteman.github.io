@@ -219,12 +219,18 @@
       //   → https://mail.google.com/mail/#all/18b83766f0c4d471
       //   https://mail.google.com/mail/u/0/#search/invoice/18b83766f0bcbac0
       //   → https://mail.google.com/mail/#all/18b83766f0bcbac0
+      //   https://mail.google.com/mail/u/0/#search/1234567890123456
+      //   → https://mail.google.com/mail/#search/1234567890123456
       //   https://mail.google.com/mail/u/0/#inbox
       //   → https://mail.google.com/mail/#inbox
       const GMAIL_LONG_ID_ALPHABET = "BCDFGHJKLMNPQRSTVWXZbcdfghjklmnpqrstvwxz";
       const GMAIL_LONG_ID = /^[BCDFGHJKLMNPQRSTVWXZbcdfghjklmnpqrstvwxz]{20,}$/;
       const GMAIL_SHORT_ID = /^[0-9a-f]{15,16}$/i;
       const GMAIL_DECODED_ID = /^(?:msg-f|thread-f|f):(\d+)$/;
+
+      // Views whose second part is a search, label name, etc., so an email's
+      // ID can only come third.
+      const GMAIL_VIEWS_WITH_ARGUMENT = ["search", "label", "category", "advanced-search"];
 
       // Turns a long Gmail ID into the short hex ID, or returns null.
       function decodeGmailId(longId) {
@@ -269,7 +275,11 @@
 
         // The fragment is "<view>/.../<ID>", so the ID is its last part.
         const fragmentParts = url.hash.slice(1).split("/");
-        if (fragmentParts.length < 2) {
+        let minimumParts = 2;
+        if (GMAIL_VIEWS_WITH_ARGUMENT.includes(fragmentParts[0])) {
+          minimumParts = 3;
+        }
+        if (fragmentParts.length < minimumParts) {
           return null;
         }
         const id = fragmentParts[fragmentParts.length - 1];
