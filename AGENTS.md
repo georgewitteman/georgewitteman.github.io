@@ -65,8 +65,8 @@ Keep it short and easy to scan:
 - Edit or replace existing lines rather than appending. Remove anything
   outdated, redundant, or obvious from the code itself.
 - One idea per bullet, no history or changelogs. Put it in the right section.
-- This is the only guidance file. `CLAUDE.md` and `GEMINI.md` just import it,
-  so don't add content to them.
+- This is the only guidance file. Claude Code reads it when there's no
+  `CLAUDE.md`, so don't add one (or any other tool-specific copy).
 
 ## Layout
 
