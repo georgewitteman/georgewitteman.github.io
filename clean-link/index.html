@@ -82,29 +82,60 @@
         return new RegExp("(^|\\.)" + brand + "(\\.[a-z]{2,3}){1,2}$");
       }
 
+      // The query's "name=value" parts, exactly as written in the link.
+      function queryParts(url) {
+        const query = url.search.slice(1);
+        if (query === "") {
+          return [];
+        }
+        return query.split("&");
+      }
+
+      // The decoded name in a "name=value" part: "+" is a space, and
+      // decodeURIComponent turns escapes like "%5F" back into "_".
+      function paramName(part) {
+        const name = part.split("=")[0].replaceAll("+", " ");
+        try {
+          return decodeURIComponent(name);
+        } catch {
+          // Not valid percent-encoding, so use it as written.
+          return name;
+        }
+      }
+
       // Removes parameters whose name is in `names` or starts with one of `prefixes`.
       // Works on a copy, so the original can be compared with the result.
+      // The rest of the query stays exactly as written. Rebuilding it with
+      // URLSearchParams would re-encode it, turning "?print" into "?print=".
       function removeParams(url, names, prefixes = []) {
         const cleaned = new URL(url.href);
-        // Copy the keys first, since deleting while iterating skips entries.
-        for (const key of [...cleaned.searchParams.keys()]) {
-          const isListed = names.includes(key);
-          const hasPrefix = prefixes.some((prefix) => key.startsWith(prefix));
-          if (isListed || hasPrefix) {
-            cleaned.searchParams.delete(key);
-          }
+        const parts = queryParts(url);
+        const keptParts = parts.filter((part) => {
+          const name = paramName(part);
+          const isListed = names.includes(name);
+          const hasPrefix = prefixes.some((prefix) => name.startsWith(prefix));
+          return !isListed && !hasPrefix;
+        });
+        if (keptParts.length < parts.length) {
+          cleaned.search = keptParts.join("&");
         }
         return cleaned;
       }
 
-      // Keeps only the listed parameters (in that order) and drops the #fragment.
+      // Keeps only the listed parameters (in that order), as written, and
+      // drops the #fragment.
       function keepOnlyParams(url, names) {
         const cleaned = new URL(url.origin + url.pathname);
+        const parts = queryParts(url);
+        const keptParts = [];
         for (const name of names) {
-          for (const value of url.searchParams.getAll(name)) {
-            cleaned.searchParams.append(name, value);
+          for (const part of parts) {
+            if (paramName(part) === name) {
+              keptParts.push(part);
+            }
           }
         }
+        cleaned.search = keptParts.join("&");
         return cleaned;
       }
 
