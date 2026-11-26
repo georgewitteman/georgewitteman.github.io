@@ -350,14 +350,17 @@
         "mail.google.com", "keep.google.com",
       ];
 
-      // Google Search: keep only the query and the search type (images, news,
-      // etc.), on the original host. Other Google pages are left alone.
+      // Google Search: keep only the query, the search type (images, news,
+      // etc.), and filters like the date range (tbs), on the original host.
+      // Other Google pages are left alone.
       //
       // Examples:
       //   https://www.google.com/search?q=example&sca_esv=abc123&ei=xyz789&tbm=isch
       //   → https://www.google.com/search?q=example&tbm=isch
       //   https://www.google.co.uk/search?q=example&oq=exa&sourceid=chrome
       //   → https://www.google.co.uk/search?q=example
+      //   https://www.google.com/search?q=example&tbs=qdr:w&start=10
+      //   → https://www.google.com/search?q=example&tbs=qdr:w
       //   https://www.google.com/maps/place/Example+Cafe/@40.7,-74.0,17z
       //   → (unchanged)
       const GOOGLE_HOST = anyCountryDomain("google");
@@ -377,7 +380,7 @@
           return null;
         }
 
-        return keepOnlyParams(url, ["q", "tbm", "udm"]);
+        return keepOnlyParams(url, ["q", "tbm", "udm", "tbs"]);
       }
 
       // YouTube: videos become https://youtu.be/<video ID>, YouTube's own
