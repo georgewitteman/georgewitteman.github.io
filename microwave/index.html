@@ -20,11 +20,23 @@
         font: inherit;
       }
       label {
-        margin-right: 1rem;
-        white-space: nowrap;
+        display: block;
+        margin: 0.5rem 0;
       }
+      /* A fixed width for each label's text lines up the controls. */
+      label span {
+        display: inline-block;
+        width: 7em;
+      }
+      /* No box around each step, so its controls line up with the ones above. */
       fieldset {
-        margin-bottom: 1rem;
+        margin: 1.5rem 0 0;
+        padding: 0;
+        border: 0;
+      }
+      legend {
+        padding: 0;
+        font-weight: bold;
       }
       .time {
         width: 4em;
@@ -33,6 +45,7 @@
       }
       .result {
         display: block;
+        margin: 0.5rem 0;
         font-size: 1.5rem;
         font-weight: bold;
       }
@@ -50,8 +63,8 @@
     </p>
 
     <p>
-      <label>Box wattage <select id="box-watts"></select></label>
-      <label>My microwave <select id="my-watts"></select></label>
+      <label><span>Box wattage</span> <select id="box-watts"></select></label>
+      <label><span>My microwave</span> <select id="my-watts"></select></label>
     </p>
 
     <div id="steps"></div>
@@ -67,24 +80,22 @@
     <template id="step-template">
       <fieldset>
         <legend></legend>
-        <p>
-          <label>Time <input class="time" type="text" inputmode="numeric" autocomplete="off" placeholder="0:00"></label>
-          <label>Power
-            <select class="power">
-              <option value="10">100% (High)</option>
-              <option value="9">90%</option>
-              <option value="8">80%</option>
-              <option value="7">70% (Medium-high)</option>
-              <option value="6">60%</option>
-              <option value="5">50% (Medium)</option>
-              <option value="4">40%</option>
-              <option value="3">30% (Medium-low)</option>
-              <option value="2">20%</option>
-              <option value="1">10% (Low)</option>
-            </select>
-          </label>
-        </p>
-        <p><output class="result"></output></p>
+        <label><span>Time</span> <input class="time" type="text" inputmode="numeric" autocomplete="off" placeholder="0:00"></label>
+        <label><span>Power</span>
+          <select class="power">
+            <option value="10">100% (High)</option>
+            <option value="9">90%</option>
+            <option value="8">80%</option>
+            <option value="7">70% (Medium-high)</option>
+            <option value="6">60%</option>
+            <option value="5">50% (Medium)</option>
+            <option value="4">40%</option>
+            <option value="3">30% (Medium-low)</option>
+            <option value="2">20%</option>
+            <option value="1">10% (Low)</option>
+          </select>
+        </label>
+        <output class="result"></output>
         <p><button class="remove" type="button">Remove step</button></p>
       </fieldset>
     </template>
