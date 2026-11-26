@@ -1027,7 +1027,7 @@
 
       function sortRecords(records) {
         // Numeric sorting puts "5 mx2" before "10 mx1" and orders IPs sensibly.
-        return [...records].sort((a, b) => a.data.localeCompare(b.data, undefined, { numeric: true }));
+        return [...records].sort((first, second) => first.data.localeCompare(second.data, undefined, { numeric: true }));
       }
 
       function renderRecord(list, recordType, record, queryName) {
@@ -1245,7 +1245,8 @@
           return;
         }
 
-        // Say what's being looked up, when it isn't exactly what was typed.
+        // Say what's being looked up, which can differ from what was typed,
+        // like the reverse DNS name for an IP address.
         const heading = addElement(summary, "p");
         if (query.ip) {
           heading.append("Reverse lookup for ");
