@@ -81,9 +81,12 @@
         }
 
         // Plain numbers are much faster than BigInt, and 32 bits fit exactly.
+        // The regex allows "0" or up to three digits without a leading zero.
+        // Leading zeros are rejected because some tools read "010" as octal
+        // (8), so the address would be ambiguous.
         let value = 0;
         for (const part of parts) {
-          if (!/^\d{1,3}$/.test(part) || Number(part) > 255) {
+          if (!/^(0|[1-9]\d{0,2})$/.test(part) || Number(part) > 255) {
             return null;
           }
           value = value * 256 + Number(part);
@@ -92,8 +95,12 @@
       }
 
       function parseIpv6(text) {
-        // Drop a zone ID, e.g. "fe80::1%eth0".
-        let address = text.split("%")[0];
+        // Drop a zone ID, e.g. "fe80::1%eth0". A "%" must have one after it.
+        const zoneParts = text.split("%");
+        if (zoneParts.length > 2 || zoneParts[1] === "") {
+          return null;
+        }
+        let address = zoneParts[0];
 
         // Turn an embedded IPv4 tail, e.g. "::ffff:1.2.3.4", into two hex groups.
         if (address.includes(".")) {
