@@ -731,15 +731,16 @@
       }
 
       // Names of the parameters in `original` that aren't in `cleaned`.
-      // A parameter whose value moved into the path, like YouTube's
-      // v=<video ID> in a youtu.be link, doesn't count as removed.
+      // A parameter whose value became a whole part of the path, like
+      // YouTube's v=<video ID> in a youtu.be link, doesn't count as removed.
       function findRemovedParams(original, cleaned) {
         const removed = new Set();
+        const pathSegments = cleaned.pathname.split("/");
         for (const [key, value] of original.searchParams) {
           if (cleaned.searchParams.has(key)) {
             continue;
           }
-          if (value !== "" && cleaned.pathname.includes(value)) {
+          if (value !== "" && pathSegments.includes(value)) {
             continue;
           }
           removed.add(key);
