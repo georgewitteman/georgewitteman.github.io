@@ -317,6 +317,11 @@
         if (!target || target === ".") {
           return null;
         }
+        // A name with escapes, like \. or \032 for a space, would be looked
+        // up with the backslashes as typed, which is a different name.
+        if (target.includes("\\")) {
+          return null;
+        }
         return withoutTrailingDot(target);
       }
 
