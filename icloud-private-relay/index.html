@@ -238,8 +238,9 @@
         }
 
         const lines = text.split("\n");
+        const rangeCount = lines.filter((line) => line.trim() !== "").length;
         const meta = document.getElementById("meta");
-        meta.textContent = `Checked against ${lines.length.toLocaleString()} ranges from Apple.`;
+        meta.textContent = `Checked against ${rangeCount.toLocaleString()} ranges from Apple.`;
         // Not awaited: the date is extra, so it mustn't slow down or break the check.
         showDataDate(meta);
         return lines;
