@@ -375,10 +375,12 @@
         return url;
       }
 
-      // Header flag bits: QR marks a response, RD asks the server to look
-      // the name up, AD asks it to say whether DNSSEC validated the answer
-      // (RFC 6840 section 5.7), and CD turns validation off.
+      // Header flag bits: QR marks a response, TC marks one that was cut
+      // short, RD asks the server to look the name up, AD asks it to say
+      // whether DNSSEC validated the answer (RFC 6840 section 5.7), and CD
+      // turns validation off.
       const FLAG_RESPONSE = 0x8000;
+      const FLAG_TRUNCATED = 0x0200;
       const FLAG_RECURSION_DESIRED = 0x0100;
       const FLAG_AUTHENTIC_DATA = 0x0020;
       const FLAG_CHECKING_DISABLED = 0x0010;
@@ -823,10 +825,10 @@
         return errors;
       }
 
-      // Returns { status, validated, comment, errorCodes, records }, where
-      // each record is { type, name, data, ttl }, status is the response
-      // code, like 3 for NXDOMAIN, and errorCodes are the extended error
-      // codes. Throws a RangeError if the message is cut short.
+      // Returns { status, validated, truncated, comment, errorCodes,
+      // records }, where each record is { type, name, data, ttl }, status
+      // is the response code, like 3 for NXDOMAIN, and errorCodes are the
+      // extended error codes. Throws a RangeError if the message ends early.
       function parseMessage(buffer) {
         const view = new DataView(buffer);
         const reader = new MessageReader(view, 0, view.byteLength);
@@ -867,10 +869,13 @@
           }
         }
 
+        // A cut-short answer may be missing records, so it can't count as validated.
+        const truncated = (flags & FLAG_TRUNCATED) !== 0;
         return {
           // The response code is the low four bits of the flags.
           status: flags & 0x0f,
-          validated: (flags & FLAG_AUTHENTIC_DATA) !== 0,
+          validated: (flags & FLAG_AUTHENTIC_DATA) !== 0 && !truncated,
+          truncated,
           comment: extendedErrors.map((error) => error.text).join(" "),
           errorCodes: extendedErrors.map((error) => error.code),
           records,
@@ -878,7 +883,7 @@
       }
 
       // Returns { error } if the request failed, otherwise
-      // { error: null, status, validated, comment, errorCodes, records }.
+      // { error: null, status, validated, truncated, comment, errorCodes, records }.
       // With checkingDisabled, the server skips DNSSEC validation.
       async function fetchAnswer(server, name, recordType, checkingDisabled) {
         const url = new URL(server.href);
@@ -921,6 +926,7 @@
           error: null,
           status: message.status,
           validated: message.validated,
+          truncated: message.truncated,
           comment: message.comment,
           errorCodes: message.errorCodes,
           records: message.records.filter((record) => record.type === recordType.number),
@@ -1032,6 +1038,9 @@
         if (outcome.dnssecFailed === true) {
           addElement(section, "p", describeDnssecFailure(outcome), "problem");
         }
+        if (outcome.truncated) {
+          addElement(section, "p", "The server cut this answer short, so it may be missing records.", "problem");
+        }
 
         const list = addElement(section, "ul", undefined, "records");
         for (const record of sortRecords(outcome.records)) {
@@ -1130,7 +1139,8 @@
           const outcome = outcomes[index];
           if (!isAnswer(outcome)) {
             failed.push(index);
-          } else if (outcome.records.length > 0) {
+          } else if (outcome.records.length > 0 || outcome.truncated) {
+            // A cut-short answer gets a section even when empty, to show its warning.
             withRecords.push(index);
           } else {
             empty.push(recordType.name);
