@@ -700,6 +700,11 @@
         return trimmed;
       }
 
+      // A scheme at the start of a link, like "mailto:" or "ftp:": a letter,
+      // then letters, digits, "+" or "-", then ":". Schemes may also have
+      // ".", but it's left out so "example.com:8080" reads as a host and port.
+      const SCHEME = /^([a-z][a-z0-9+-]*):/i;
+
       // Accepts a bare link ("amazon.com/dp/..."), a full link, or shared
       // text with a link in it ("Check this out: https://...").
       // Returns null unless the result is an http(s) link.
@@ -711,10 +716,13 @@
 
         // \S+ runs to the next whitespace, which ends the link.
         const embeddedLink = trimmed.match(/https?:\/\/\S+/i);
-        let candidate = trimmed;
+        let candidate;
         if (embeddedLink !== null) {
           candidate = trimTrailingPunctuation(embeddedLink[0]);
-        } else if (!trimmed.includes("://")) {
+        } else if (/\s/.test(trimmed) || SCHEME.test(trimmed)) {
+          // Words, or a link with another scheme, aren't a bare link.
+          return null;
+        } else {
           candidate = "https://" + trimmed;
         }
 
@@ -727,7 +735,23 @@
         if (url.protocol !== "http:" && url.protocol !== "https:") {
           return null;
         }
+        // A bare link needs a dot in its host, like "example.com", so a
+        // word like "hello" isn't taken for one.
+        if (embeddedLink === null && !url.hostname.includes(".")) {
+          return null;
+        }
         return url;
+      }
+
+      // True for a single link with a scheme other than http(s), like
+      // "mailto:someone@example.com". Those are shown as they are.
+      function isOtherSchemeLink(text) {
+        const scheme = text.match(SCHEME);
+        if (scheme === null || /\s/.test(text)) {
+          return false;
+        }
+        const name = scheme[1].toLowerCase();
+        return name !== "http" && name !== "https";
       }
 
       // Names of the parameters in `original` that aren't in `cleaned`.
@@ -760,11 +784,23 @@
       const pasteButton = document.getElementById("paste");
 
       function render() {
-        const text = inputElement.value;
+        const text = inputElement.value.trim();
         const original = parseLink(text);
+        const isOtherScheme = original === null && isOtherSchemeLink(text);
 
-        errorElement.hidden = original !== null || text.trim() === "";
-        outputElement.hidden = original === null;
+        errorElement.hidden = original !== null || isOtherScheme || text === "";
+        outputElement.hidden = original === null && !isOtherScheme;
+
+        if (isOtherScheme) {
+          // Shown as text with no href, so it can't be opened from here.
+          // Only http(s) links are safe to open: "javascript:" ones run code.
+          resultElement.removeAttribute("href");
+          resultElement.textContent = text;
+          summaryElement.textContent = "Left as is, since only web links are cleaned.";
+          shortLinkNote.hidden = true;
+          gmailNote.hidden = true;
+          return;
+        }
         if (original === null) {
           return;
         }
