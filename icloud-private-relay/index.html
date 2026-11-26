@@ -425,17 +425,21 @@
         );
       }
 
-      // api.ipify.org only answers over IPv4. api6.ipify.org only over IPv6.
-      // A failed lookup can mean the network lacks that IP version or that
-      // ipify is down, and there's no way to tell which.
+      // ipv4.icanhazip.com only answers over IPv4, ipv6.icanhazip.com only
+      // over IPv6. Each replies with the address as plain text and a
+      // newline. A failed lookup can mean the network lacks that IP version
+      // or that icanhazip is down, and there's no way to tell which.
       async function checkMyIp(section, url, missingMessage) {
         const ipElement = document.getElementById(`ip-${section}`);
 
         let ip;
         try {
           const response = await fetch(url);
-          ip = (await response.json()).ip;
-          if (typeof ip !== "string") {
+          if (!response.ok) {
+            throw new Error("HTTP error " + response.status);
+          }
+          ip = (await response.text()).trim();
+          if (parseIp(ip) === null) {
             throw new Error("No IP in the response");
           }
         } catch {
@@ -462,12 +466,12 @@
 
       checkMyIp(
         "v4",
-        "https://api.ipify.org?format=json",
+        "https://ipv4.icanhazip.com",
         "Couldn't look up your IPv4 address. You can still check an IP below."
       );
       checkMyIp(
         "v6",
-        "https://api6.ipify.org?format=json",
+        "https://ipv6.icanhazip.com",
         "Couldn't look up your IPv6 address. Your network may not support IPv6, or the lookup service may be down."
       );
     </script>

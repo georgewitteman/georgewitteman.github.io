@@ -93,7 +93,7 @@ Keep it short and easy to scan:
 - `favicon.ico` and `apple-touch-icon.png`: browsers find `favicon.ico` at
   the site root by themselves, so pages don't link to it. Only the home page
   links the iOS icon, since that's the page that gets bookmarked.
-- External services, each of which must fail gracefully: `api.ipify.org`
+- External services, each of which must fail gracefully: `icanhazip.com`
   (iCloud page), `dns.google` and `cloudflare-dns.com` (DNS page, which also
   links to `bgp.he.net`), and `mask-api.icloud.com` (ranges workflow).
 - `icloud-private-relay/ranges.csv`: Apple's list, saved as-is (fields may
