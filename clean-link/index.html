@@ -247,8 +247,8 @@
       // finds the email whatever label it has, and dropping /u/<n> opens
       // the browser's default Google account.
       //
-      // Links that don't decode cleanly are left to the Google Workspace
-      // rule below.
+      // Other Gmail links, like ones whose ID doesn't decode cleanly, keep
+      // their view and lose /u/<n>.
       //
       // Examples (the first long ID is "thread-f:<number>", the second
       // "msg-f:<number>" shifted by one hex digit):
@@ -369,6 +369,8 @@
         if (GOOGLE_WORKSPACE_HOSTS.some((host) => isSite(url.hostname, host))) {
           const cleaned = removeParams(url, ["usp", "ts"]);
           // Drop /u/<n>, which picks one of the signed-in accounts.
+          // (?=\/|$) requires a "/" or the end after the number, without
+          // removing it.
           cleaned.pathname = cleaned.pathname.replace(/\/u\/\d+(?=\/|$)/g, "");
           return cleaned;
         }
@@ -809,8 +811,12 @@
         }
 
         const cleaned = cleanUrl(original);
-        // Safe to use as a link: parseLink only allows http(s).
-        resultElement.href = cleaned.href;
+        // Only an http(s) link gets an href, since "javascript:" ones run code.
+        if (cleaned.protocol === "http:" || cleaned.protocol === "https:") {
+          resultElement.href = cleaned.href;
+        } else {
+          resultElement.removeAttribute("href");
+        }
         resultElement.textContent = cleaned.href;
         renderSummary(original, cleaned);
         shortLinkNote.hidden = !isShortLink(cleaned);
