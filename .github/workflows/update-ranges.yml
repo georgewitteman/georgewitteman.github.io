@@ -2,6 +2,8 @@ name: Update ranges
 
 on:
   schedule:
+    # Fields are minute, hour, day of month, month, and day of week, in
+    # UTC. A minute past the hour avoids the busy start of each hour.
     - cron: "17 6 * * *"
   workflow_dispatch:
 
@@ -12,24 +14,29 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      # A plain clone instead of actions/checkout, so there's no action
-      # version to keep updated.
+      # A plain `git clone` rather than actions/checkout, so there's no
+      # action version to keep updated. `--depth 1` fetches only the latest
+      # commit, and the token in the URL lets `git push` write back.
       - name: Clone the repository
         env:
           TOKEN: ${{ github.token }}
         run: git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" .
 
-      # Checks the download before replacing the old file. If Apple moves or
-      # changes the file, this step fails (GitHub emails about failed runs)
-      # and the site keeps the last good data instead of breaking silently.
+      # Check the download before replacing the old file, so if Apple moves
+      # or changes it, this step fails and the site keeps the last good data.
       - name: Download Apple's egress IP list
         run: |
           new="$RUNNER_TEMP/ranges.csv"
           old=icloud-private-relay/ranges.csv
+
+          # curl -f fails on HTTP errors, -sS hides the progress bar but
+          # still shows errors, and -L follows redirects.
           curl -fsSL https://mask-api.icloud.com/egress-ip-ranges.csv -o "$new"
 
           # Every line must start with a CIDR and a two-letter country code,
-          # e.g. "172.224.226.0/27,GB,".
+          # e.g. "172.224.226.0/27,GB,". grep -E takes an extended regex, -v
+          # picks lines that don't match it, and -c counts them. grep exits
+          # with an error when the count is 0, hence `|| true`.
           bad_lines=$(grep -Evc '^[0-9a-fA-F:.]+/[0-9]{1,3},[A-Z]{2},' "$new" || true)
           if [ "$bad_lines" -ne 0 ]; then
             echo "::error::$bad_lines lines don't look like ranges. First few:"
@@ -47,17 +54,18 @@ jobs:
 
           mv "$new" "$old"
 
-      # ranges-updated.txt holds the date of the last refresh, which the
-      # page shows. It's rewritten when the list changes, and at least
-      # weekly otherwise, so a date more than a week old means this workflow
-      # has stopped. The weekly commit also counts as repository activity,
-      # which keeps GitHub from turning off this scheduled workflow after
-      # 60 days without any.
+      # Rewrite the refresh date when the list changed, and at least weekly
+      # otherwise, so an old date means this workflow has stopped. The weekly
+      # commit also keeps GitHub from turning off scheduled workflows in a
+      # repository with no recent activity.
       - name: Record the refresh date
         run: |
           date_file=icloud-private-relay/ranges-updated.txt
           last=$(cat "$date_file" 2>/dev/null || echo 0000-00-00)
           week_ago=$(date -u -d '7 days ago' +%Y-%m-%d)
+
+          # `git diff --quiet` fails when the file changed. `<` inside [[ ]]
+          # compares text, which puts YYYY-MM-DD dates in order.
           if ! git diff --quiet -- icloud-private-relay/ranges.csv || [[ "$last" < "$week_ago" ]]; then
             date -u +%Y-%m-%d > "$date_file"
           fi
@@ -67,4 +75,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add icloud-private-relay/ranges.csv icloud-private-relay/ranges-updated.txt
+
+          # `git diff --cached --quiet` fails when something is staged.
           git diff --cached --quiet || (git commit -m "Update iCloud Private Relay ranges" && git push)

@@ -214,8 +214,8 @@
         }
       }
 
-      // Intl.DurationFormat is newer than everything else on this page, so
-      // where it's missing, durations are shown in plain seconds only.
+      // Not every browser has Intl.DurationFormat. Where it's missing,
+      // durations are shown in plain seconds only.
       const durationFormat = "DurationFormat" in Intl ? new Intl.DurationFormat("en", { style: "long" }) : null;
 
       // 300 becomes "5 minutes", 90061 becomes "1 day, 1 hour, 1 minute, 1 second".
@@ -301,6 +301,7 @@
         }
         const [primary, mailbox, serial, refresh, retry, expire, minimum] = fields;
         // The mailbox is written as a name: the first unescaped dot is the @.
+        // In the pattern, (?:[^.\\]|\\.)* skips escaped characters like "\.".
         const email = withoutTrailingDot(mailbox)
           .replace(/^((?:[^.\\]|\\.)*)\./, "$1@")
           .replace(/\\\./g, ".");
@@ -819,6 +820,7 @@
         const url = new URL(resolver.url);
         url.searchParams.set("dns", toBase64Url(buildQuery(name, recordType.number, checkingDisabled)));
 
+        // AbortController cancels the fetch if it takes longer than TIMEOUT_MS.
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
         let buffer;

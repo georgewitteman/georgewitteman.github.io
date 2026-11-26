@@ -55,14 +55,9 @@
     <p><small id="meta"></small></p>
 
     <script>
-      // ---------------------------------------------------------------
-      // Parsing IP addresses
-      //
-      // An IP is represented as { version: 4 | 6, value: BigInt }.
-      // ---------------------------------------------------------------
-
       const BITS = { 4: 32, 6: 128 };
 
+      // Returns { version: 4 | 6, value: BigInt }, or null.
       function parseIp(text) {
         const ipv4 = parseIpv4(text);
         if (ipv4 !== null) {
@@ -149,17 +144,6 @@
         return text.split(":");
       }
 
-      // ---------------------------------------------------------------
-      // Loading Apple's ranges
-      //
-      // Each line of ranges.csv looks like: 172.224.226.0/27,GB,GB-EN,London,<postal>
-      //
-      // Parsing all ~285,000 lines takes a second or more, so lines are parsed
-      // only as checks need them, a little at a time with pauses so the page
-      // stays responsive. A check stops at its first match. Parsed ranges are
-      // kept and shared, so no line is ever parsed twice.
-      // ---------------------------------------------------------------
-
       // How long to work before pausing so the browser can repaint and
       // handle input.
       const WORK_BUDGET_MS = 20;
@@ -171,10 +155,15 @@
       let nextLine = 0;
 
       // Returns the first range containing `ip`, or null if none does.
+      //
+      // Parsing every line up front would freeze the page, so lines are
+      // parsed only as checks need them, a little at a time with pauses so
+      // the page stays responsive. A check stops at its first match. Parsed
+      // ranges are kept and shared, so no line is ever parsed twice.
       async function findRange(ip) {
         const lines = await loadLines();
-        // Checks started together (like the IPv4 and IPv6 checks on page
-        // load) would otherwise all run before the first repaint.
+        // Checks started together would otherwise all run before the first
+        // repaint.
         await pause();
 
         let index = 0;
@@ -209,6 +198,8 @@
         return null;
       }
 
+      // setTimeout with no delay lets the browser repaint and handle input
+      // before the next step.
       function pause() {
         return new Promise((resolve) => setTimeout(resolve));
       }
@@ -216,6 +207,7 @@
       // Fetches once and shares the result. A failed fetch is forgotten so
       // the next check tries again instead of repeating the same error.
       async function loadLines() {
+        // `??=` assigns only when linesPromise is null.
         linesPromise ??= fetchLines();
         try {
           return await linesPromise;
@@ -244,10 +236,9 @@
         return lines;
       }
 
-      // ranges-updated.txt holds the date (YYYY-MM-DD) the workflow last
-      // refreshed ranges.csv. The workflow rewrites it at least weekly, so
-      // an old date means the automatic updates have stopped. If the file
-      // is missing or unreadable, the date is just left out.
+      // ranges-updated.txt holds the date (YYYY-MM-DD) ranges.csv was last
+      // refreshed. An old date means the automatic updates have stopped. If
+      // the file is missing or unreadable, the date is just left out.
       const STALE_AFTER_DAYS = 30;
       const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -265,6 +256,8 @@
         if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
           return;
         }
+        // Read and shown as UTC, so the date doesn't shift with the
+        // visitor's time zone.
         const updated = new Date(dateText + "T00:00:00Z");
         if (Number.isNaN(updated.getTime())) {
           return;
@@ -282,6 +275,8 @@
         }
       }
 
+      // Each line is a CIDR, country code, region code, city, and postal
+      // code, e.g. 172.224.226.0/27,GB,GB-EN,London,
       // Returns null for blank lines, comments, and lines that don't parse.
       function parseRangeLine(rawLine) {
         const line = rawLine.trim();
@@ -369,8 +364,9 @@
         return region.split("-").pop();
       }
 
-      // Country codes look like "US". Show the name in the visitor's language,
-      // falling back to the raw code.
+      // Country codes look like "US". Intl.DisplayNames gives the name in
+      // the visitor's language, and its of() throws for codes it doesn't
+      // accept, so fall back to the raw code.
       const countryNames = new Intl.DisplayNames(undefined, { type: "region" });
 
       function formatCountry(country) {
@@ -381,13 +377,8 @@
         }
       }
 
-      // ---------------------------------------------------------------
-      // Showing results
-      //
       // Each section ("v4", "v6", "manual") has elements named
       // result-<section> and location-<section>.
-      // ---------------------------------------------------------------
-
       function showResult(section, status, message, location = "") {
         const result = document.getElementById(`result-${section}`);
         result.className = `result ${status}`;
@@ -426,9 +417,9 @@
       }
 
       // ipv4.icanhazip.com only answers over IPv4, ipv6.icanhazip.com only
-      // over IPv6. Each replies with the address as plain text and a
-      // newline. A failed lookup can mean the network lacks that IP version
-      // or that icanhazip is down, and there's no way to tell which.
+      // over IPv6, each with the address as plain text. A failed lookup can
+      // mean the network lacks that IP version or that icanhazip is down,
+      // and there's no way to tell which.
       async function checkMyIp(section, url, missingMessage) {
         const ipElement = document.getElementById(`ip-${section}`);
 
@@ -451,10 +442,6 @@
         ipElement.textContent = ip;
         await checkIp(section, ip);
       }
-
-      // ---------------------------------------------------------------
-      // Start
-      // ---------------------------------------------------------------
 
       document.getElementById("manual-form").addEventListener("submit", (event) => {
         event.preventDefault();
