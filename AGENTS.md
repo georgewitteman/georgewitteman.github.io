@@ -122,6 +122,7 @@ Keep it short and easy to scan:
 - `dns/`: queries are standard DNS-over-HTTPS (RFC 8484 binary messages),
   not Google's or Cloudflare's JSON APIs, so any DoH server works. It uses
   one server at a time, chosen in the page or with `?server=`.
-- `dns/`: `?q=` is short because it's typed by hand. Each lookup of a new
-  name pushes a history entry, like a search page, except from an empty
-  page, so Back never lands on an empty form.
+- `dns/`: `?q=` is short because it's typed by hand; `?server=` is spelled
+  out because the page sets it. Each lookup of a new name or server pushes
+  a history entry, like a search page, except from an empty page, so Back
+  never lands on an empty form.

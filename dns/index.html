@@ -350,11 +350,18 @@
         return "?" + params;
       }
 
-      // Returns the server's URL, or null unless it's an https:// URL.
+      // Returns the server's URL, the default for blank text, or null
+      // unless it's an https:// URL. Servers often publish their address
+      // as an RFC 6570 template like https://dns.example/dns-query{?dns},
+      // so a {...} part at the end is dropped.
       function parseServer(text) {
+        const address = text.trim().replace(/\{[^}]*\}$/, "");
+        if (address === "") {
+          return new URL(DEFAULT_SERVER);
+        }
         let url;
         try {
-          url = new URL(text.trim());
+          url = new URL(address);
         } catch {
           return null;
         }
@@ -364,9 +371,10 @@
         return url;
       }
 
-      // Header flag bits: RD asks the server to look the name up, AD asks
-      // it to say whether DNSSEC validated the answer (RFC 6840 section
-      // 5.7), and CD turns validation off.
+      // Header flag bits: QR marks a response, RD asks the server to look
+      // the name up, AD asks it to say whether DNSSEC validated the answer
+      // (RFC 6840 section 5.7), and CD turns validation off.
+      const FLAG_RESPONSE = 0x8000;
       const FLAG_RECURSION_DESIRED = 0x0100;
       const FLAG_AUTHENTIC_DATA = 0x0020;
       const FLAG_CHECKING_DISABLED = 0x0010;
@@ -552,20 +560,25 @@
         return text;
       }
 
-      // Text in double quotes, with " and \ escaped and bytes that aren't
-      // printable ASCII written as \DDD.
-      function quoted(bytes) {
+      // Writes bytes as text, with a backslash before \ and each character
+      // in `special`, and bytes that aren't printable ASCII as \DDD.
+      function escapeText(bytes, special) {
         let text = "";
         for (const byte of bytes) {
-          if (byte === 0x22 || byte === 0x5c) {
-            text += "\\" + String.fromCharCode(byte);
+          const character = String.fromCharCode(byte);
+          if (character === "\\" || special.includes(character)) {
+            text += "\\" + character;
           } else if (byte < 0x20 || byte > 0x7e) {
             text += "\\" + String(byte).padStart(3, "0");
           } else {
-            text += String.fromCharCode(byte);
+            text += character;
           }
         }
-        return '"' + text + '"';
+        return text;
+      }
+
+      function quoted(bytes) {
+        return '"' + escapeText(bytes, '"') + '"';
       }
 
       function formatIpv4(bytes) {
@@ -575,6 +588,13 @@
       // Writes an IPv6 address the short way (RFC 5952): groups without
       // leading zeros, and the longest run of two or more zero groups as "::".
       function formatIpv6(bytes) {
+        // IPv4-mapped addresses (::ffff:0:0/96) end in the IPv4 address
+        // (RFC 5952 section 5).
+        const isMapped = bytes.slice(0, 10).every((byte) => byte === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
+        if (isMapped) {
+          return "::ffff:" + formatIpv4(bytes.slice(12));
+        }
+
         const groups = [];
         for (let i = 0; i < 16; i += 2) {
           groups.push((bytes[i] * 256 + bytes[i + 1]).toString(16));
@@ -671,10 +691,14 @@
               parts.push(SERVICE_PARAM_NAMES[mandatoryKey] || "key" + mandatoryKey);
             }
           } else if (key === 1) {
+            // Commas separate the protocol IDs, so a comma inside one is escaped.
             while (!value.atEnd()) {
-              parts.push(new TextDecoder().decode(value.characterString()));
+              parts.push(escapeText(value.characterString(), ","));
             }
           } else if (key === 2) {
+            if (!value.atEnd()) {
+              throw new RangeError("no-default-alpn has a value");
+            }
             params.push(name);
             continue;
           } else if (key === 3) {
@@ -691,6 +715,9 @@
             }
           } else {
             parts.push(quoted(value.rest()));
+          }
+          if (!value.atEnd()) {
+            throw new RangeError(name + " has extra bytes");
           }
           params.push(name + "=" + parts.join(","));
         }
@@ -771,7 +798,7 @@
           const dataLength = reader.uint16();
           const data = new MessageReader(view, reader.position, reader.position + dataLength);
           reader.bytes(dataLength);
-          if (code !== OPTION_EXTENDED_ERROR) {
+          if (code !== OPTION_EXTENDED_ERROR || dataLength < 2) {
             continue;
           }
           const errorCode = data.uint16();
@@ -796,6 +823,9 @@
         const questionCount = reader.uint16();
         const answerCount = reader.uint16();
         const otherCount = reader.uint16() + reader.uint16();
+        if ((flags & FLAG_RESPONSE) === 0) {
+          throw new RangeError("Not a response");
+        }
 
         // Each question is a name, a type and a class.
         for (let i = 0; i < questionCount; i++) {
@@ -929,11 +959,14 @@
         const row = addElement(list, "li");
         addElement(row, "code", record.data);
 
-        if (recordType.name === "A" || recordType.name === "AAAA") {
+        // Data that didn't match its type is shown as raw bytes (\# ...),
+        // which has no address or name to link to.
+        const isRawData = record.data.startsWith("\\# ");
+        if (!isRawData && (recordType.name === "A" || recordType.name === "AAAA")) {
           row.append(" ");
           addLink(row, "WHOIS", whoisUrl(record.data));
         }
-        const target = targetName(recordType, record.data);
+        const target = isRawData ? null : targetName(recordType, record.data);
         if (target) {
           row.append(" ");
           addLink(row, "Look up", lookupUrl(target));
