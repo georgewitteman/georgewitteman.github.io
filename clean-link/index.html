@@ -144,17 +144,19 @@
       // https://github.com/AdguardTeam/AdguardFilters/tree/master/TrackParamFilter/sections
       // https://github.com/brave/brave-core/blob/master/components/query_filter/utils.cc
       // https://github.com/mpchadwick/tracking-query-params-registry/blob/master/_data/params.csv
+      // Short names that other sites may use for real content, like si, are
+      // only removed by the site rules for the sites that track with them.
       const TRACKING_PARAMS = [
         "ScCid", "_branch_match_id", "_bta_c", "_bta_tid", "_ga", "_gl",
         "_hsenc", "_hsmi", "_ke", "_kx", "ad_id", "campaign_id", "campid",
-        "customid", "dclid", "dm_i", "ef_id", "epik", "fbclid", "gad_campaignid",
+        "dclid", "dm_i", "ef_id", "epik", "fbclid", "gad_campaignid",
         "gad_source", "gbraid", "gclid", "gclsrc", "gdffi", "gdfms", "gdftrk",
         "igsh", "igshid", "irclickid", "li_fat_id", "mc_cid", "mc_eid", "mibextid",
         "mkcid", "mkevt", "mkrid", "mkt_tok", "mkwid", "msclkid", "ndclid",
         "oly_anon_id", "oly_enc_id", "pcrid", "redirect_log_mongo_id",
-        "redirect_mongo_id", "rtid", "s_kwcid", "sb_referer_host", "si",
-        "sms_click", "sms_source", "sms_uph", "srsltid", "toolid", "ttclid",
-        "twclid", "vero_id", "vmcid", "wbraid", "wickedid", "yclid",
+        "redirect_mongo_id", "s_kwcid", "sb_referer_host", "sms_click",
+        "sms_source", "sms_uph", "srsltid", "ttclid", "twclid", "vero_id",
+        "vmcid", "wbraid", "wickedid", "yclid",
       ];
 
       // Any parameter whose name starts with one of these is removed too.
@@ -208,7 +210,7 @@
       //   → https://www.ebay.com/itm/123456789012
       //   https://www.ebay.com/itm/123456789012?var=987654321&_trksid=p2047675
       //   → https://www.ebay.com/itm/123456789012?var=987654321
-      //   https://www.ebay.com/sch/i.html?_nkw=widget&_trksid=p2047675
+      //   https://www.ebay.com/sch/i.html?_nkw=widget&_trksid=p2047675&toolid=10001
       //   → https://www.ebay.com/sch/i.html?_nkw=widget
       //   https://www.ebay.com/itm/4K-Example-Monitor
       //   → (unchanged)
@@ -230,7 +232,9 @@
           return cleaned;
         }
 
-        return removeParams(url, ["_trkparms", "_trksid", "amdata", "hash"]);
+        return removeParams(url, [
+          "_trkparms", "_trksid", "amdata", "customid", "hash", "rtid", "toolid",
+        ]);
       }
 
       // Gmail: links to an email become https://mail.google.com/mail/#all/<ID>.
@@ -389,6 +393,8 @@
       //   → https://music.youtube.com/watch?v=AbCdEfGhIjK
       //   https://www.youtube.com/@example/videos?feature=shared
       //   → https://www.youtube.com/@example/videos
+      //   https://www.youtube.com/shorts/AbCdEfGhIjK?si=abc123
+      //   → https://www.youtube.com/shorts/AbCdEfGhIjK
       const YOUTUBE_VIDEO_HOSTS = ["youtube.com", "www.youtube.com", "m.youtube.com"];
       const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
@@ -411,7 +417,7 @@
           return keepOnlyParams(url, ["v", "t", "list"]);
         }
 
-        return removeParams(url, ["feature", "pp"]);
+        return removeParams(url, ["feature", "pp", "si"]);
       }
 
       // X (Twitter): drop the share-tracking parameters.
