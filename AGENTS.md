@@ -116,6 +116,10 @@ Keep it short and easy to scan:
   last deploy.
 - `icloud-private-relay/`: the visitor's hostnames come from Cloudflare's
   DoH JSON API (`application/dns-json`), on purpose, unlike `dns/`.
+- `clean-link/`: the goal is the site's own canonical link minus tracking,
+  not the shortest link that works. Use a form the site itself gives out
+  (address bar or share button), not one that only works by redirecting,
+  like `gmail.com` for Gmail.
 - `clean-link/`: a site rule that doesn't recognize a link's format leaves
   it alone instead of guessing, so when a site changes its links they stop
   being cleaned rather than break. The link to clean can be passed as
