@@ -240,72 +240,34 @@
       // Gmail: links to an email become https://mail.google.com/mail/#all/<ID>.
       //
       // Gmail's links put the email's ID after the view name, as in
-      // #inbox/<ID>, #label/<name>/<ID>, or #search/<query>/<ID>. The long
-      // ID is made of consonants: it's text like "msg-f:<number>",
-      // "thread-f:<number>", or "f:<number>" written as a base-40 number,
-      // and that number in hex is the short ID Gmail also accepts. #all
+      // #inbox/<ID>, #label/<name>/<ID>, or #search/<query>/<ID>. #all
       // finds the email whatever label it has, and dropping /u/<n> opens
-      // the browser's default Google account.
+      // the browser's default Google account. The ID is kept as written.
       //
-      // Other Gmail links, like ones whose ID doesn't decode cleanly, keep
-      // their view and lose /u/<n>.
+      // Other Gmail links, like ones without an email ID, keep their view
+      // and lose /u/<n>.
       //
-      // Examples (the first long ID is "thread-f:<number>", the second
-      // "msg-f:<number>" shifted by one hex digit):
+      // Examples:
       //   https://mail.google.com/mail/u/0/#inbox/hSDNjKldTpJJJhbcgWsvxrggTvgMHlDHKWNKqNsTdJ
-      //   → https://mail.google.com/mail/#all/18b83766f0bcbac0
+      //   → https://mail.google.com/mail/#all/hSDNjKldTpJJJhbcgWsvxrggTvgMHlDHKWNKqNsTdJ
       //   https://mail.google.com/mail/u/1/#label/Receipts/CXKnWZngLGgsFlmXRxbXdNfPdDKSBWwKHQHncgV
-      //   → https://mail.google.com/mail/#all/18b83766f0c4d471
+      //   → https://mail.google.com/mail/#all/CXKnWZngLGgsFlmXRxbXdNfPdDKSBWwKHQHncgV
       //   https://mail.google.com/mail/u/0/#search/invoice/18b83766f0bcbac0
       //   → https://mail.google.com/mail/#all/18b83766f0bcbac0
       //   https://mail.google.com/mail/u/0/#search/1234567890123456
       //   → https://mail.google.com/mail/#search/1234567890123456
       //   https://mail.google.com/mail/u/0/#inbox
       //   → https://mail.google.com/mail/#inbox
-      const GMAIL_LONG_ID_ALPHABET = "BCDFGHJKLMNPQRSTVWXZbcdfghjklmnpqrstvwxz";
+
+      // Gmail's email IDs: the long kind Gmail shows today is 20 or more
+      // letters with no vowels, and the older short kind is 15 or 16 hex
+      // digits.
       const GMAIL_LONG_ID = /^[BCDFGHJKLMNPQRSTVWXZbcdfghjklmnpqrstvwxz]{20,}$/;
       const GMAIL_SHORT_ID = /^[0-9a-f]{15,16}$/i;
-      const GMAIL_DECODED_ID = /^(?:msg-f|thread-f|f):(\d+)$/;
 
       // Views whose second part is a search, label name, etc., so an email's
       // ID can only come third.
       const GMAIL_VIEWS_WITH_ARGUMENT = ["search", "label", "category", "advanced-search"];
-
-      // Turns a long Gmail ID into the short hex ID, or returns null.
-      function decodeGmailId(longId) {
-        // Read the ID as a base-40 number. It needs BigInt, since it's far
-        // too large for a normal number to hold exactly.
-        let number = 0n;
-        for (const character of longId) {
-          const digit = GMAIL_LONG_ID_ALPHABET.indexOf(character);
-          number = number * 40n + BigInt(digit);
-        }
-
-        let hex = number.toString(16);
-        if (hex.length % 2 === 1) {
-          hex = "0" + hex;
-        }
-
-        // Written as hex bytes, the number is the text itself. In some IDs
-        // the text is shifted by one hex digit instead, with an extra "0"
-        // at the start and end, so try both.
-        const textHexOptions = [hex];
-        if (hex.startsWith("0") && hex.endsWith("0")) {
-          textHexOptions.push(hex.slice(1, -1));
-        }
-
-        for (const textHex of textHexOptions) {
-          let text = "";
-          for (let i = 0; i < textHex.length; i += 2) {
-            text += String.fromCharCode(parseInt(textHex.slice(i, i + 2), 16));
-          }
-          const match = text.match(GMAIL_DECODED_ID);
-          if (match !== null) {
-            return BigInt(match[1]).toString(16);
-          }
-        }
-        return null;
-      }
 
       function cleanGmail(url) {
         if (url.hostname !== "mail.google.com" || !url.pathname.startsWith("/mail/")) {
@@ -322,18 +284,11 @@
           return null;
         }
         const id = fragmentParts[fragmentParts.length - 1];
-
-        let shortId = null;
-        if (GMAIL_SHORT_ID.test(id)) {
-          shortId = id.toLowerCase();
-        } else if (GMAIL_LONG_ID.test(id)) {
-          shortId = decodeGmailId(id);
-        }
-        if (shortId === null) {
+        if (!GMAIL_LONG_ID.test(id) && !GMAIL_SHORT_ID.test(id)) {
           return null;
         }
 
-        return new URL("https://mail.google.com/mail/#all/" + shortId);
+        return new URL("https://mail.google.com/mail/#all/" + id);
       }
 
       // Google Workspace: drop account selectors and common URL metadata,
@@ -828,8 +783,8 @@
         gmailNote.hidden = cleaned.hostname !== "mail.google.com";
       }
 
-      // Says what the Gmail rule changed, e.g. "Replaced the long email ID
-      // with the short one, removed /u/0 and changed #inbox to #all."
+      // Says what the Gmail rule changed, e.g. "Removed /u/0 and changed
+      // #inbox to #all."
       // Returns "" for links the Gmail rule didn't shorten.
       function describeGmailChanges(original, cleaned) {
         if (cleaned.hostname !== "mail.google.com" || !cleaned.hash.startsWith("#all/")) {
@@ -837,10 +792,6 @@
         }
 
         const changes = [];
-        const originalId = original.hash.split("/").pop();
-        if (GMAIL_LONG_ID.test(originalId)) {
-          changes.push("replaced the long email ID with the short one");
-        }
         const account = original.pathname.match(/\/u\/\d+/);
         if (account !== null) {
           changes.push("removed " + account[0]);
