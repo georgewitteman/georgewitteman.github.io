@@ -108,6 +108,8 @@ Keep it short and easy to scan:
   being cleaned rather than break. The link to clean can be passed as
   `#<link>`, never `?`, so it doesn't reach the server. The page never
   writes links into the address, so they stay out of browser history.
+- `dns/`: queries are standard DNS-over-HTTPS (RFC 8484 binary messages),
+  not Google's or Cloudflare's JSON APIs, so any DoH server's URL works.
 - `dns/`: `?q=` is short because it's typed by hand. Each lookup of a new
   name pushes a history entry, like a search page, except from an empty
   page, so Back never lands on an empty form.

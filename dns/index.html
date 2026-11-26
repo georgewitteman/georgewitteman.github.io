@@ -96,14 +96,12 @@
       // Settings
       // ---------------------------------------------------------------
 
-      // Both speak the same JSON format. Cloudflare needs the Accept header,
-      // which Google ignores. Neither needs a CORS preflight.
+      // Any DNS-over-HTTPS server (RFC 8484) works here.
       const RESOLVERS = [
-        { name: "Google", url: "https://dns.google/resolve" },
+        { name: "Google", url: "https://dns.google/dns-query" },
         { name: "Cloudflare", url: "https://cloudflare-dns.com/dns-query" },
       ];
 
-      // Types are sent as numbers, which both resolvers accept for any type.
       const RECORD_TYPES = [
         { name: "A", number: 1, description: "IPv4 addresses." },
         { name: "AAAA", number: 28, description: "IPv6 addresses." },
@@ -215,7 +213,7 @@
         // and converts international names to the xn-- form DNS uses.
         try {
           const name = new URL("http://" + host).hostname;
-          if (name === "") {
+          if (name === "" || encodeName(name) === null) {
             return null;
           }
           return { name: name, ip: null };
@@ -273,42 +271,6 @@
           return seconds + " seconds";
         }
         return seconds + " seconds (" + readable + ")";
-      }
-
-      // Cloudflare returns TXT data as quoted strings ("v=spf1 ..." "more"),
-      // and Google returns the strings already joined without quotes. Unquote
-      // and join so both look the same. Quoted text can contain \" and \\
-      // escapes, and \DDD for a byte in decimal.
-      function unquoteTxt(data) {
-        if (!data.startsWith('"')) {
-          return data;
-        }
-        const encoder = new TextEncoder();
-        const bytes = [];
-        let inQuotes = false;
-        for (let i = 0; i < data.length; i++) {
-          const char = data[i];
-          if (char === '"') {
-            inQuotes = !inQuotes;
-            continue;
-          }
-          if (!inQuotes) {
-            continue;
-          }
-          if (char === "\\") {
-            const digits = data.slice(i + 1, i + 4);
-            if (/^\d{3}$/.test(digits)) {
-              bytes.push(Number(digits));
-              i += 3;
-            } else {
-              bytes.push(...encoder.encode(data[i + 1] || ""));
-              i += 1;
-            }
-            continue;
-          }
-          bytes.push(...encoder.encode(char));
-        }
-        return new TextDecoder().decode(new Uint8Array(bytes));
       }
 
       function withoutTrailingDot(name) {
@@ -393,6 +355,481 @@
       }
 
       // ---------------------------------------------------------------
+      // DNS messages
+      //
+      // Queries and answers are binary DNS messages, the same ones DNS has
+      // always sent (RFC 1035), carried over HTTPS (RFC 8484).
+      // ---------------------------------------------------------------
+
+      // Header flag bits: RD asks the server to look the name up, AD asks
+      // it to say whether DNSSEC validated the answer (RFC 6840 section
+      // 5.7), and CD turns validation off.
+      const FLAG_RECURSION_DESIRED = 0x0100;
+      const FLAG_AUTHENTIC_DATA = 0x0020;
+      const FLAG_CHECKING_DISABLED = 0x0010;
+
+      const TYPE_OPT = 41;
+      const OPTION_EXTENDED_ERROR = 15;
+
+      // Extended DNS error codes (RFC 8914), which explain failures.
+      const EXTENDED_ERROR_NAMES = [
+        "Other error", "Unsupported DNSKEY algorithm", "Unsupported DS digest type",
+        "Stale answer", "Forged answer", "DNSSEC indeterminate", "DNSSEC bogus",
+        "Signature expired", "Signature not yet valid", "DNSKEY missing",
+        "RRSIGs missing", "No zone key bit set", "NSEC missing", "Cached error",
+        "Not ready", "Blocked", "Censored", "Filtered", "Prohibited",
+        "Stale NXDOMAIN answer", "Not authoritative", "Not supported",
+        "No reachable authority", "Network error", "Invalid data",
+      ];
+
+      // Key names for HTTPS and SVCB parameters (RFC 9460).
+      const SERVICE_PARAM_NAMES = [
+        "mandatory", "alpn", "no-default-alpn", "port", "ipv4hint", "ech", "ipv6hint",
+      ];
+
+      // A name in a message is a series of labels, each a length byte and
+      // then that many bytes, ending with a zero byte. Returns those bytes,
+      // or null for a name DNS can't carry: an empty label, a label over 63
+      // bytes, or a name over 255 bytes.
+      function encodeName(name) {
+        const bytes = [];
+        const labels = withoutTrailingDot(name).split(".");
+        for (const label of labels) {
+          const labelBytes = new TextEncoder().encode(label);
+          if (labelBytes.length === 0 || labelBytes.length > 63) {
+            return null;
+          }
+          bytes.push(labelBytes.length, ...labelBytes);
+        }
+        bytes.push(0);
+        if (bytes.length > 255) {
+          return null;
+        }
+        return bytes;
+      }
+
+      function buildQuery(name, typeNumber, checkingDisabled) {
+        let flags = FLAG_RECURSION_DESIRED | FLAG_AUTHENTIC_DATA;
+        if (checkingDisabled) {
+          flags |= FLAG_CHECKING_DISABLED;
+        }
+        return new Uint8Array([
+          // Header: a message ID of 0 (RFC 8484 asks for 0, so answers
+          // cache well), the flags, then the number of questions (1),
+          // answers (0), authority records (0) and additional records (1).
+          0, 0, flags >> 8, flags & 0xff, 0, 1, 0, 0, 0, 0, 0, 1,
+
+          // The question: the name, the record type, then class 1 (IN).
+          ...encodeName(name), typeNumber >> 8, typeNumber & 0xff, 0, 1,
+
+          // An OPT record (RFC 6891), which lets the server send extended
+          // errors: the root name (0), type 41, a 4096-byte size limit, then
+          // the DO bit (0x80), which asks for DNSSEC, and no options.
+          0, 0, TYPE_OPT, 0x10, 0x00, 0, 0, 0x80, 0, 0, 0,
+        ]);
+      }
+
+      // RFC 8484 sends the query in ?dns= as URL-safe base64, without "=".
+      function toBase64Url(bytes) {
+        return toBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      }
+
+      function toBase64(bytes) {
+        let binary = "";
+        for (const byte of bytes) {
+          binary += String.fromCharCode(byte);
+        }
+        return btoa(binary);
+      }
+
+      function toHex(bytes) {
+        return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+      }
+
+      // Reads a message from front to back. Every read checks it stays
+      // before `end`, and throws a RangeError otherwise.
+      class MessageReader {
+        constructor(view, position, end) {
+          this.view = view;
+          this.position = position;
+          this.end = end;
+        }
+
+        bytes(count) {
+          if (this.position + count > this.end) {
+            throw new RangeError("Read past the end of the record");
+          }
+          const start = this.view.byteOffset + this.position;
+          this.position += count;
+          return new Uint8Array(this.view.buffer, start, count);
+        }
+
+        uint8() {
+          return this.bytes(1)[0];
+        }
+
+        uint16() {
+          const [high, low] = this.bytes(2);
+          return high * 256 + low;
+        }
+
+        uint32() {
+          const bytes = this.bytes(4);
+          return ((bytes[0] * 256 + bytes[1]) * 256 + bytes[2]) * 256 + bytes[3];
+        }
+
+        rest() {
+          return this.bytes(this.end - this.position);
+        }
+
+        atEnd() {
+          return this.position >= this.end;
+        }
+
+        // A length byte, then that many bytes.
+        characterString() {
+          return this.bytes(this.uint8());
+        }
+
+        // Returns a name like "example.com.". A name can end with a pointer
+        // to the rest of the name earlier in the message (RFC 1035 section
+        // 4.1.4): two bytes whose top two bits are set, with the other 14
+        // giving the offset. The jumps are capped so a pointer loop can't
+        // hang the page.
+        name() {
+          const labels = [];
+          let position = this.position;
+          let jumps = 0;
+          while (true) {
+            const reader = new MessageReader(this.view, position, this.view.byteLength);
+            const length = reader.uint8();
+            if (length === 0) {
+              if (jumps === 0) {
+                this.bytes(position + 1 - this.position);
+              }
+              break;
+            }
+            if ((length & 0xc0) === 0xc0) {
+              const pointer = ((length & 0x3f) << 8) | reader.uint8();
+              if (jumps === 0) {
+                this.bytes(position + 2 - this.position);
+              }
+              jumps += 1;
+              if (jumps > 64) {
+                throw new RangeError("Too many name pointers");
+              }
+              position = pointer;
+              continue;
+            }
+            if (length > 63) {
+              throw new RangeError("Unknown label type");
+            }
+            labels.push(formatLabel(reader.bytes(length)));
+            position += 1 + length;
+          }
+          return labels.join(".") + ".";
+        }
+      }
+
+      // Writes "." and "\" in a label as \. and \\, and bytes that aren't
+      // printable ASCII as \DDD, the byte in decimal, like dig does.
+      function formatLabel(bytes) {
+        let text = "";
+        for (const byte of bytes) {
+          if (byte === 0x2e || byte === 0x5c) {
+            text += "\\" + String.fromCharCode(byte);
+          } else if (byte < 0x21 || byte > 0x7e) {
+            text += "\\" + String(byte).padStart(3, "0");
+          } else {
+            text += String.fromCharCode(byte);
+          }
+        }
+        return text;
+      }
+
+      // Text in double quotes, with " and \ escaped and bytes that aren't
+      // printable ASCII written as \DDD.
+      function quoted(bytes) {
+        let text = "";
+        for (const byte of bytes) {
+          if (byte === 0x22 || byte === 0x5c) {
+            text += "\\" + String.fromCharCode(byte);
+          } else if (byte < 0x20 || byte > 0x7e) {
+            text += "\\" + String(byte).padStart(3, "0");
+          } else {
+            text += String.fromCharCode(byte);
+          }
+        }
+        return '"' + text + '"';
+      }
+
+      function formatIpv4(bytes) {
+        return Array.from(bytes).join(".");
+      }
+
+      // Writes an IPv6 address the short way (RFC 5952): groups without
+      // leading zeros, and the longest run of two or more zero groups as "::".
+      function formatIpv6(bytes) {
+        const groups = [];
+        for (let i = 0; i < 16; i += 2) {
+          groups.push((bytes[i] * 256 + bytes[i + 1]).toString(16));
+        }
+
+        let bestStart = -1;
+        let bestLength = 1;
+        let runStart = -1;
+        for (let i = 0; i <= groups.length; i++) {
+          if (i < groups.length && groups[i] === "0") {
+            if (runStart === -1) {
+              runStart = i;
+            }
+            continue;
+          }
+          if (runStart !== -1 && i - runStart > bestLength) {
+            bestStart = runStart;
+            bestLength = i - runStart;
+          }
+          runStart = -1;
+        }
+
+        if (bestStart === -1) {
+          return groups.join(":");
+        }
+        const head = groups.slice(0, bestStart).join(":");
+        const tail = groups.slice(bestStart + bestLength).join(":");
+        return head + "::" + tail;
+      }
+
+      // LOC sizes and precisions are one byte: the top four bits are a
+      // digit and the bottom four a power of ten, giving centimeters.
+      function formatLocSize(byte) {
+        const centimeters = (byte >> 4) * 10 ** (byte & 0x0f);
+        return formatMeters(centimeters);
+      }
+
+      function formatMeters(centimeters) {
+        if (centimeters % 100 === 0) {
+          return centimeters / 100 + "m";
+        }
+        return (centimeters / 100).toFixed(2) + "m";
+      }
+
+      // LOC latitude and longitude are thousandths of an arcsecond, offset
+      // by 2^31 so the equator and prime meridian are 2^31.
+      function formatLocAngle(value, positive, negative) {
+        const offset = value - 2 ** 31;
+        let remaining = Math.abs(offset);
+        const degrees = Math.floor(remaining / 3600000);
+        remaining -= degrees * 3600000;
+        const minutes = Math.floor(remaining / 60000);
+        remaining -= minutes * 60000;
+        const seconds = (remaining / 1000).toFixed(3);
+        return degrees + " " + minutes + " " + seconds + " " + (offset < 0 ? negative : positive);
+      }
+
+      function formatLoc(reader) {
+        const version = reader.uint8();
+        if (version !== 0) {
+          throw new RangeError("Unknown LOC version");
+        }
+        const size = reader.uint8();
+        const horizontalPrecision = reader.uint8();
+        const verticalPrecision = reader.uint8();
+        const latitude = reader.uint32();
+        const longitude = reader.uint32();
+        // Altitude is in centimeters above 100,000 meters below sea level.
+        const altitude = reader.uint32() - 10000000;
+        return [
+          formatLocAngle(latitude, "N", "S"),
+          formatLocAngle(longitude, "E", "W"),
+          (altitude / 100).toFixed(2) + "m",
+          formatLocSize(size),
+          formatLocSize(horizontalPrecision),
+          formatLocSize(verticalPrecision),
+        ].join(" ");
+      }
+
+      // Parameters are a key number, a length, then the value.
+      function formatServiceParams(reader) {
+        const params = [];
+        while (!reader.atEnd()) {
+          const key = reader.uint16();
+          const valueLength = reader.uint16();
+          const value = new MessageReader(reader.view, reader.position, reader.position + valueLength);
+          reader.bytes(valueLength);
+
+          const name = SERVICE_PARAM_NAMES[key] || "key" + key;
+          const parts = [];
+          if (key === 0) {
+            while (!value.atEnd()) {
+              const mandatoryKey = value.uint16();
+              parts.push(SERVICE_PARAM_NAMES[mandatoryKey] || "key" + mandatoryKey);
+            }
+          } else if (key === 1) {
+            while (!value.atEnd()) {
+              parts.push(new TextDecoder().decode(value.characterString()));
+            }
+          } else if (key === 2) {
+            params.push(name);
+            continue;
+          } else if (key === 3) {
+            parts.push(String(value.uint16()));
+          } else if (key === 4) {
+            while (!value.atEnd()) {
+              parts.push(formatIpv4(value.bytes(4)));
+            }
+          } else if (key === 5) {
+            parts.push(toBase64(value.rest()));
+          } else if (key === 6) {
+            while (!value.atEnd()) {
+              parts.push(formatIpv6(value.bytes(16)));
+            }
+          } else {
+            parts.push(quoted(value.rest()));
+          }
+          params.push(name + "=" + parts.join(","));
+        }
+        return params;
+      }
+
+      // Each type's record data as text, in the usual zone file format.
+      const DATA_FORMATTERS = {
+        A: (reader) => formatIpv4(reader.bytes(4)),
+        AAAA: (reader) => formatIpv6(reader.bytes(16)),
+        CNAME: (reader) => reader.name(),
+        DNAME: (reader) => reader.name(),
+        NS: (reader) => reader.name(),
+        PTR: (reader) => reader.name(),
+        MX: (reader) => reader.uint16() + " " + reader.name(),
+        SOA: (reader) => [
+          reader.name(), reader.name(), reader.uint32(), reader.uint32(),
+          reader.uint32(), reader.uint32(), reader.uint32(),
+        ].join(" "),
+        // TXT records hold one or more strings, which are read as one.
+        TXT: (reader) => {
+          const bytes = [];
+          while (!reader.atEnd()) {
+            bytes.push(...reader.characterString());
+          }
+          return new TextDecoder().decode(new Uint8Array(bytes));
+        },
+        CAA: (reader) => {
+          const flags = reader.uint8();
+          const tag = new TextDecoder().decode(reader.characterString());
+          return flags + " " + tag + " " + quoted(reader.rest());
+        },
+        HTTPS: (reader) => [reader.uint16(), reader.name(), ...formatServiceParams(reader)].join(" "),
+        SVCB: (reader) => [reader.uint16(), reader.name(), ...formatServiceParams(reader)].join(" "),
+        SRV: (reader) => [reader.uint16(), reader.uint16(), reader.uint16(), reader.name()].join(" "),
+        NAPTR: (reader) => [
+          reader.uint16(), reader.uint16(), quoted(reader.characterString()),
+          quoted(reader.characterString()), quoted(reader.characterString()), reader.name(),
+        ].join(" "),
+        DS: (reader) => [reader.uint16(), reader.uint8(), reader.uint8(), toHex(reader.rest())].join(" "),
+        CDS: (reader) => [reader.uint16(), reader.uint8(), reader.uint8(), toHex(reader.rest())].join(" "),
+        DNSKEY: (reader) => [reader.uint16(), reader.uint8(), reader.uint8(), toBase64(reader.rest())].join(" "),
+        CDNSKEY: (reader) => [reader.uint16(), reader.uint8(), reader.uint8(), toBase64(reader.rest())].join(" "),
+        TLSA: (reader) => [reader.uint8(), reader.uint8(), reader.uint8(), toHex(reader.rest())].join(" "),
+        SSHFP: (reader) => [reader.uint8(), reader.uint8(), toHex(reader.rest())].join(" "),
+        OPENPGPKEY: (reader) => toBase64(reader.rest()),
+        URI: (reader) => [reader.uint16(), reader.uint16(), quoted(reader.rest())].join(" "),
+        LOC: formatLoc,
+        HINFO: (reader) => quoted(reader.characterString()) + " " + quoted(reader.characterString()),
+      };
+
+      // Falls back to the generic form for unknown data (RFC 3597):
+      // \# then the length and the bytes in hex.
+      function formatData(view, recordType, start, length) {
+        const formatter = DATA_FORMATTERS[recordType.name];
+        if (formatter) {
+          try {
+            const reader = new MessageReader(view, start, start + length);
+            const text = String(formatter(reader));
+            if (reader.atEnd()) {
+              return text;
+            }
+          } catch {
+            // Malformed for its type, so show the bytes instead.
+          }
+        }
+        const bytes = new MessageReader(view, start, start + length).rest();
+        return "\\# " + length + " " + toHex(bytes);
+      }
+
+      // Each option in an OPT record is a code, a length, then the data.
+      // Extended errors are a code number, then optional text.
+      function readExtendedErrors(view, start, length) {
+        const reader = new MessageReader(view, start, start + length);
+        const errors = [];
+        while (!reader.atEnd()) {
+          const code = reader.uint16();
+          const dataLength = reader.uint16();
+          const data = new MessageReader(view, reader.position, reader.position + dataLength);
+          reader.bytes(dataLength);
+          if (code !== OPTION_EXTENDED_ERROR) {
+            continue;
+          }
+          const errorCode = data.uint16();
+          let text = EXTENDED_ERROR_NAMES[errorCode] || "Extended error " + errorCode;
+          const extraText = new TextDecoder().decode(data.rest()).trim();
+          if (extraText !== "") {
+            text += " (" + extraText + ")";
+          }
+          errors.push(text + ".");
+        }
+        return errors;
+      }
+
+      // Returns { status, validated, comment, records }, where each record
+      // is { type, name, data, ttl } and status is the response code, like
+      // 3 for NXDOMAIN. Throws a RangeError if the message is cut short.
+      function parseMessage(buffer) {
+        const view = new DataView(buffer);
+        const reader = new MessageReader(view, 0, view.byteLength);
+        reader.uint16();
+        const flags = reader.uint16();
+        const questionCount = reader.uint16();
+        const answerCount = reader.uint16();
+        const otherCount = reader.uint16() + reader.uint16();
+
+        // Each question is a name, a type and a class.
+        for (let i = 0; i < questionCount; i++) {
+          reader.name();
+          reader.bytes(4);
+        }
+
+        // Each record is a name, type, class, TTL and data length, then the
+        // data. Only answers are shown; the rest are only read for the OPT
+        // record's extended errors.
+        const records = [];
+        const comments = [];
+        for (let i = 0; i < answerCount + otherCount; i++) {
+          const name = reader.name();
+          const typeNumber = reader.uint16();
+          reader.uint16();
+          const ttl = reader.uint32();
+          const length = reader.uint16();
+          const start = reader.position;
+          reader.bytes(length);
+
+          if (i < answerCount) {
+            const recordType = RECORD_TYPES.find((known) => known.number === typeNumber) || { name: null };
+            records.push({ type: typeNumber, name, ttl, data: formatData(view, recordType, start, length) });
+          } else if (typeNumber === TYPE_OPT) {
+            comments.push(...readExtendedErrors(view, start, length));
+          }
+        }
+
+        return {
+          // The response code is the low four bits of the flags.
+          status: flags & 0x0f,
+          validated: (flags & FLAG_AUTHENTIC_DATA) !== 0,
+          comment: comments.join(" "),
+          records,
+        };
+      }
+
+      // ---------------------------------------------------------------
       // Querying
       // ---------------------------------------------------------------
 
@@ -401,17 +838,14 @@
       // With checkingDisabled, the resolver skips DNSSEC validation.
       async function fetchAnswer(resolver, name, recordType, checkingDisabled) {
         const url = new URL(resolver.url);
-        url.searchParams.set("name", name);
-        url.searchParams.set("type", String(recordType.number));
-        if (checkingDisabled) {
-          url.searchParams.set("cd", "1");
-        }
+        url.searchParams.set("dns", toBase64Url(buildQuery(name, recordType.number, checkingDisabled)));
 
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        let buffer;
         try {
           const response = await fetch(url, {
-            headers: { Accept: "application/dns-json" },
+            headers: { Accept: "application/dns-message" },
             // Cached responses would show stale TTLs.
             cache: "no-store",
             signal: controller.signal,
@@ -419,33 +853,7 @@
           if (!response.ok) {
             return { resolver, error: "HTTP error " + response.status };
           }
-          const body = await response.json();
-
-          // Answers can include other types, like the CNAME chain that led
-          // to an A record. Those are shown under their own type instead.
-          const answers = Array.isArray(body.Answer) ? body.Answer : [];
-          const records = answers
-            .filter((answer) => answer.type === recordType.number)
-            .map((answer) => {
-              const rawData = String(answer.data);
-              return {
-                name: String(answer.name),
-                data: recordType.name === "TXT" ? unquoteTxt(rawData) : rawData,
-                ttl: Number(answer.TTL),
-              };
-            });
-
-          // Comment is a string from Google and an array from Cloudflare.
-          const comment = Array.isArray(body.Comment) ? body.Comment.join(" ") : String(body.Comment || "");
-
-          return {
-            resolver,
-            error: null,
-            status: Number(body.Status),
-            validated: body.AD === true,
-            comment,
-            records,
-          };
+          buffer = await response.arrayBuffer();
         } catch (error) {
           if (error.name === "AbortError") {
             return { resolver, error: "timed out" };
@@ -454,6 +862,24 @@
         } finally {
           clearTimeout(timer);
         }
+
+        let message;
+        try {
+          message = parseMessage(buffer);
+        } catch {
+          return { resolver, error: "sent an answer this page couldn't read" };
+        }
+
+        // Answers can include other types, like the CNAME chain that led
+        // to an A record. Those are shown under their own type instead.
+        return {
+          resolver,
+          error: null,
+          status: message.status,
+          validated: message.validated,
+          comment: message.comment,
+          records: message.records.filter((record) => record.type === recordType.number),
+        };
       }
 
       // Validating resolvers answer SERVFAIL when a signed domain's DNSSEC
