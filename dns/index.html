@@ -397,6 +397,12 @@
         "No reachable authority", "Network error", "Invalid data",
       ];
 
+      // The extended error codes that mean DNSSEC validation failed: 1, 2
+      // and 5 to 12 from RFC 8914, and 27 (unsupported NSEC3 iterations)
+      // from RFC 9276. Codes 3 (stale answer) and 4 (forged answer) sit in
+      // the same range but aren't about DNSSEC.
+      const DNSSEC_ERROR_CODES = [1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 27];
+
       // Key names for HTTPS and SVCB parameters (RFC 9460).
       const SERVICE_PARAM_NAMES = [
         "mandatory", "alpn", "no-default-alpn", "port", "ipv4hint", "ech", "ipv6hint",
@@ -793,7 +799,8 @@
       }
 
       // Each option in an OPT record is a code, a length, then the data.
-      // Extended errors are a code number, then optional text.
+      // Extended errors are a code number, then optional text. Returns
+      // them as { code, text }.
       function readExtendedErrors(view, start, length) {
         const reader = new MessageReader(view, start, start + length);
         const errors = [];
@@ -811,14 +818,15 @@
           if (extraText !== "") {
             text += " (" + extraText + ")";
           }
-          errors.push(text + ".");
+          errors.push({ code: errorCode, text: text + "." });
         }
         return errors;
       }
 
-      // Returns { status, validated, comment, records }, where each record
-      // is { type, name, data, ttl } and status is the response code, like
-      // 3 for NXDOMAIN. Throws a RangeError if the message is cut short.
+      // Returns { status, validated, comment, errorCodes, records }, where
+      // each record is { type, name, data, ttl }, status is the response
+      // code, like 3 for NXDOMAIN, and errorCodes are the extended error
+      // codes. Throws a RangeError if the message is cut short.
       function parseMessage(buffer) {
         const view = new DataView(buffer);
         const reader = new MessageReader(view, 0, view.byteLength);
@@ -841,7 +849,7 @@
         // data. Only answers are shown; the rest are only read for the OPT
         // record's extended errors.
         const records = [];
-        const comments = [];
+        const extendedErrors = [];
         for (let i = 0; i < answerCount + otherCount; i++) {
           const name = reader.name();
           const typeNumber = reader.uint16();
@@ -855,7 +863,7 @@
             const recordType = RECORD_TYPES.find((known) => known.number === typeNumber) || { name: null };
             records.push({ type: typeNumber, name, ttl, data: formatData(view, recordType, start, length) });
           } else if (typeNumber === TYPE_OPT) {
-            comments.push(...readExtendedErrors(view, start, length));
+            extendedErrors.push(...readExtendedErrors(view, start, length));
           }
         }
 
@@ -863,13 +871,14 @@
           // The response code is the low four bits of the flags.
           status: flags & 0x0f,
           validated: (flags & FLAG_AUTHENTIC_DATA) !== 0,
-          comment: comments.join(" "),
+          comment: extendedErrors.map((error) => error.text).join(" "),
+          errorCodes: extendedErrors.map((error) => error.code),
           records,
         };
       }
 
       // Returns { error } if the request failed, otherwise
-      // { error: null, status, validated, comment, records }.
+      // { error: null, status, validated, comment, errorCodes, records }.
       // With checkingDisabled, the server skips DNSSEC validation.
       async function fetchAnswer(server, name, recordType, checkingDisabled) {
         const url = new URL(server.href);
@@ -913,6 +922,7 @@
           status: message.status,
           validated: message.validated,
           comment: message.comment,
+          errorCodes: message.errorCodes,
           records: message.records.filter((record) => record.type === recordType.number),
         };
       }
@@ -924,6 +934,13 @@
       async function queryServer(server, name, recordType) {
         const outcome = await fetchAnswer(server, name, recordType, false);
         if (outcome.error !== null || outcome.status !== 2) {
+          return outcome;
+        }
+        // Many servers don't say why they failed, but when one gives an
+        // extended error that isn't about DNSSEC, like "No reachable
+        // authority", it's a plain failure.
+        const isDnssecError = outcome.errorCodes.some((code) => DNSSEC_ERROR_CODES.includes(code));
+        if (outcome.errorCodes.length > 0 && !isDnssecError) {
           return outcome;
         }
         const unchecked = await fetchAnswer(server, name, recordType, true);
