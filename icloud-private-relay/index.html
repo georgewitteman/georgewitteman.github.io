@@ -36,11 +36,13 @@
 
     <h2>IPv4</h2>
     <p>Your IP: <code id="ip-v4">looking up...</code></p>
+    <p>Hostname: <code id="host-v4">looking up...</code></p>
     <p class="result" id="result-v4"></p>
     <p id="location-v4"></p>
 
     <h2>IPv6</h2>
     <p>Your IP: <code id="ip-v6">looking up...</code></p>
+    <p>Hostname: <code id="host-v6">looking up...</code></p>
     <p class="result" id="result-v6"></p>
     <p id="location-v6"></p>
 
@@ -416,12 +418,64 @@
         );
       }
 
+      // Reverse DNS: the hostname for an IP is the PTR record of a name
+      // built from the IP backwards, e.g. 192.0.2.1 is looked up as
+      // 1.2.0.192.in-addr.arpa, and IPv6 as one hex digit per label under
+      // ip6.arpa.
+      function reverseName(ip) {
+        if (ip.version === 4) {
+          const octets = [];
+          for (let i = 0; i < 4; i++) {
+            octets.push(((ip.value >> BigInt(i * 8)) & 0xffn).toString());
+          }
+          return `${octets.join(".")}.in-addr.arpa`;
+        }
+
+        const digits = ip.value.toString(16).padStart(32, "0").split("").reverse();
+        return `${digits.join(".")}.ip6.arpa`;
+      }
+
+      // Uses Cloudflare's DNS-over-HTTPS JSON API. The answer looks like
+      // { "Status": 0, "Answer": [{ "type": 12, "data": "host.example.com." }] },
+      // where Status is the DNS response code (0 is success, 3 is "no such
+      // name") and type 12 is PTR. Other answer types, such as a CNAME the
+      // lookup passed through, are skipped.
+      async function showHostname(section, ip) {
+        const hostElement = document.getElementById(`host-${section}`);
+        const url = `https://cloudflare-dns.com/dns-query?name=${reverseName(ip)}&type=PTR`;
+
+        let answer;
+        try {
+          const response = await fetch(url, { headers: { accept: "application/dns-json" } });
+          if (!response.ok) {
+            throw new Error("HTTP error " + response.status);
+          }
+          answer = await response.json();
+        } catch {
+          hostElement.textContent = "couldn't look up";
+          return;
+        }
+
+        if (answer.Status !== 0 && answer.Status !== 3) {
+          hostElement.textContent = "couldn't look up";
+          return;
+        }
+
+        // `?? []` stands in an empty list when there's no Answer, and
+        // /\.$/ drops the trailing dot DNS puts on full names.
+        const hostnames = (answer.Answer ?? [])
+          .filter((record) => record.type === 12 && typeof record.data === "string")
+          .map((record) => record.data.replace(/\.$/, ""));
+        hostElement.textContent = hostnames.join(", ") || "none";
+      }
+
       // ipv4.icanhazip.com only answers over IPv4, ipv6.icanhazip.com only
       // over IPv6, each with the address as plain text. A failed lookup can
       // mean the network lacks that IP version or that icanhazip is down,
       // and there's no way to tell which.
       async function checkMyIp(section, url, missingMessage) {
         const ipElement = document.getElementById(`ip-${section}`);
+        const hostElement = document.getElementById(`host-${section}`);
 
         let ip;
         try {
@@ -435,11 +489,14 @@
           }
         } catch {
           ipElement.textContent = "unknown";
+          hostElement.textContent = "unknown";
           showResult(section, "none", missingMessage);
           return;
         }
 
         ipElement.textContent = ip;
+        // Not awaited, so the relay check doesn't wait on the hostname.
+        showHostname(section, parseIp(ip));
         await checkIp(section, ip);
       }
 

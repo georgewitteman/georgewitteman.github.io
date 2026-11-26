@@ -104,9 +104,9 @@ Keep it short and easy to scan:
   the site root by themselves, so pages don't link to it. Only the home page
   links the iOS icon, since that's the page that gets bookmarked.
 - External services, each of which must fail gracefully: `icanhazip.com`
-  (iCloud page), the DNS page's example DoH servers (default
-  `cloudflare-dns.com`; it also links to `bgp.he.net`), and
-  `mask-api.icloud.com` (ranges workflow).
+  and `cloudflare-dns.com` (iCloud page), the DNS page's example DoH
+  servers (default `cloudflare-dns.com`; it also links to `bgp.he.net`),
+  and `mask-api.icloud.com` (ranges workflow).
 - `icloud-private-relay/ranges.csv`: Apple's list, saved as-is (fields may
   be quoted). The daily workflow rejects downloads that don't look like the
   usual list; if it stops, the page keeps working with older data.
@@ -114,6 +114,8 @@ Keep it short and easy to scan:
   rewritten when the list changes and at least weekly. The page shows it and
   warns past 30 days. Not `Last-Modified`, which GitHub Pages sets to the
   last deploy.
+- `icloud-private-relay/`: the visitor's hostnames come from Cloudflare's
+  DoH JSON API (`application/dns-json`), on purpose, unlike `dns/`.
 - `clean-link/`: a site rule that doesn't recognize a link's format leaves
   it alone instead of guessing, so when a site changes its links they stop
   being cleaned rather than break. The link to clean can be passed as
