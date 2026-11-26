@@ -36,6 +36,8 @@ it sits unmaintained. Every change should be judged against that.
 - **Every page stands alone.** No page loads, frames, or calls code from
   another page. Each tool's data files are the only exception.
 - **No tests or test pages.** Check each change by hand instead (below).
+  `clean-link/` site rules list made-up examples (a link, then `→` what
+  it becomes) in their comments; add or update them with the rule.
 - **Use made-up examples.** Links, IDs, names, and emails a user pastes stay
   out of commits, code, and docs. Use invented ones like `example.com`.
 
@@ -45,6 +47,7 @@ it sits unmaintained. Every change should be judged against that.
   from there. Pages that `fetch` their data files don't work from `file://`.
 - Try a few made-up inputs, including ones that should be left alone, and
   check that the page shows no errors.
+- For `clean-link/`, run every site rule example, not just the changed one.
 - Agents without a screen can do this with headless Chromium (Playwright),
   from a script kept outside the repo. Stand in for external services that
   aren't reachable from the sandbox.

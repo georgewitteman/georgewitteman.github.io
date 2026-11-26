@@ -145,9 +145,23 @@
       // Each rule returns a cleaned URL, or null if the link isn't for that
       // site. The first rule that matches wins, and the generic tracking
       // cleanup runs afterwards either way.
+      //
+      // Each rule's comment ends with made-up examples of a link and what
+      // it should become. To check a change, paste them in, or open
+      // clean-link/#<link>. Links with no site rule only lose tracking:
+      //   https://example.com/article?id=7&utm_source=newsletter&fbclid=abc
+      //   → https://example.com/article?id=7
       // ---------------------------------------------------------------
 
       // Amazon: product pages become https://<host>/dp/<product ID>.
+      //
+      // Examples:
+      //   https://www.amazon.com/Example-Widget/dp/B0EXAMPLE1/ref=sr_1_3?crid=2XYZ&qid=1700000000
+      //   → https://www.amazon.com/dp/B0EXAMPLE1
+      //   https://www.amazon.co.uk/gp/product/B0EXAMPLE1?psc=1
+      //   → https://www.amazon.co.uk/dp/B0EXAMPLE1
+      //   https://www.amazon.com/s/ref=nb_sb_noss?k=widget&crid=2XYZ&sprefix=widg
+      //   → https://www.amazon.com/s?k=widget
       const AMAZON_HOST = anyCountryDomain("amazon");
       const AMAZON_PRODUCT_PATH =
         /\/(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/ASIN|o\/ASIN)\/([A-Z0-9]{10})(?=\/|$)/i;
@@ -175,6 +189,12 @@
       }
 
       // eBay: item pages become https://<host>/itm/<item ID>.
+      //
+      // Examples:
+      //   https://www.ebay.com/itm/Example-Widget/123456789012?hash=item1a2b3c&_trksid=p2047675
+      //   → https://www.ebay.com/itm/123456789012
+      //   https://www.ebay.com/sch/i.html?_nkw=widget&_trksid=p2047675
+      //   → https://www.ebay.com/sch/i.html?_nkw=widget
       const EBAY_HOST = anyCountryDomain("ebay");
       const EBAY_ITEM_PATH = /^\/itm\/(?:[^/]+\/)?(\d+)/;
 
@@ -203,6 +223,17 @@
       //
       // Links that don't decode cleanly fall through to the Google
       // Workspace rule below, which only drops /u/<n> and a few parameters.
+      //
+      // Examples (the first long ID is "thread-f:<number>", the second
+      // "msg-f:<number>" shifted by one hex digit):
+      //   https://mail.google.com/mail/u/0/#inbox/hSDNjKldTpJJJhbcgWsvxrggTvgMHlDHKWNKqNsTdJ
+      //   → https://mail.google.com/mail/#all/18b83766f0bcbac0
+      //   https://mail.google.com/mail/u/1/#label/Receipts/CXKnWZngLGgsFlmXRxbXdNfPdDKSBWwKHQHncgV
+      //   → https://mail.google.com/mail/#all/18b83766f0c4d471
+      //   https://mail.google.com/mail/u/0/#search/invoice/18b83766f0bcbac0
+      //   → https://mail.google.com/mail/#all/18b83766f0bcbac0
+      //   https://mail.google.com/mail/u/0/#inbox
+      //   → https://mail.google.com/mail/#inbox
       const GMAIL_LONG_ID_ALPHABET = "BCDFGHJKLMNPQRSTVWXZbcdfghjklmnpqrstvwxz";
       const GMAIL_LONG_ID = /^[BCDFGHJKLMNPQRSTVWXZbcdfghjklmnpqrstvwxz]{20,}$/;
       const GMAIL_SHORT_ID = /^[0-9a-f]{15,16}$/i;
@@ -271,6 +302,12 @@
 
       // Google Workspace: drop account selectors and common URL metadata,
       // but preserve parameters and fragments needed to open the resource.
+      //
+      // Examples:
+      //   https://docs.google.com/document/d/1ExampleDocumentId/edit?usp=sharing#heading=h.abc123
+      //   → https://docs.google.com/document/d/1ExampleDocumentId/edit#heading=h.abc123
+      //   https://drive.google.com/drive/u/2/folders/1ExampleFolderId
+      //   → https://drive.google.com/drive/folders/1ExampleFolderId
       const GOOGLE_WORKSPACE_HOSTS = [
         "docs.google.com", "drive.google.com", "calendar.google.com",
         "sites.google.com", "meet.google.com", "chat.google.com",
@@ -278,7 +315,15 @@
       ];
 
       // Google Search: keep only the query and the search type (images, news,
-      // etc.), on the original host.
+      // etc.), on the original host. Other Google pages are left alone.
+      //
+      // Examples:
+      //   https://www.google.com/search?q=example&sca_esv=abc123&ei=xyz789&tbm=isch
+      //   → https://www.google.com/search?q=example&tbm=isch
+      //   https://www.google.co.uk/search?q=example&oq=exa&sourceid=chrome
+      //   → https://www.google.co.uk/search?q=example
+      //   https://www.google.com/maps/place/Example+Cafe/@40.7,-74.0,17z
+      //   → (unchanged)
       const GOOGLE_HOST = anyCountryDomain("google");
 
       function cleanGoogle(url) {
@@ -301,6 +346,16 @@
       // YouTube: videos become https://youtu.be/<video ID>, YouTube's own
       // short link, keeping only the start time and playlist. YouTube Music
       // links stay on music.youtube.com, so they still open in Music.
+      //
+      // Examples:
+      //   https://www.youtube.com/watch?v=AbCdEfGhIjK&t=42s&si=abc123&pp=xyz
+      //   → https://youtu.be/AbCdEfGhIjK?t=42s
+      //   https://youtu.be/AbCdEfGhIjK?si=abc123
+      //   → https://youtu.be/AbCdEfGhIjK
+      //   https://music.youtube.com/watch?v=AbCdEfGhIjK&si=abc123&feature=share
+      //   → https://music.youtube.com/watch?v=AbCdEfGhIjK
+      //   https://www.youtube.com/@example/videos?feature=shared
+      //   → https://www.youtube.com/@example/videos
       const YOUTUBE_VIDEO_HOSTS = ["youtube.com", "www.youtube.com", "m.youtube.com"];
       const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
@@ -327,6 +382,10 @@
       }
 
       // X (Twitter): drop the share-tracking parameters.
+      //
+      // Example:
+      //   https://x.com/example/status/1234567890123456789?s=20&t=AbCdEf
+      //   → https://x.com/example/status/1234567890123456789
       function cleanX(url) {
         if (!isSite(url.hostname, "x.com") && !isSite(url.hostname, "twitter.com")) {
           return null;
@@ -336,6 +395,10 @@
       }
 
       // Spotify: links never need parameters.
+      //
+      // Example:
+      //   https://open.spotify.com/track/0ExampleTrackId00000000?si=abc123
+      //   → https://open.spotify.com/track/0ExampleTrackId00000000
       function cleanSpotify(url) {
         if (url.hostname !== "open.spotify.com") {
           return null;
@@ -345,6 +408,10 @@
       }
 
       // Instagram: keep only which image in a multi-image post was shared.
+      //
+      // Example:
+      //   https://www.instagram.com/p/AbCdEfGhIjK/?igsh=abc123&img_index=2
+      //   → https://www.instagram.com/p/AbCdEfGhIjK/?img_index=2
       function cleanInstagram(url) {
         if (!isSite(url.hostname, "instagram.com")) {
           return null;
@@ -358,6 +425,14 @@
       // https://app.notion.com/p/<page ID>, or https://www.notion.so/<page ID>
       // for older links. Database views (?v=), pages opened on top (?p=),
       // and links to a block (#...) are kept.
+      //
+      // Examples:
+      //   https://www.notion.so/example-team/Example-Page-0123456789abcdef0123456789abcdef?pvs=4
+      //   → https://www.notion.so/0123456789abcdef0123456789abcdef
+      //   https://www.notion.so/example-team/0123456789abcdef0123456789abcdef?v=fedcba9876543210fedcba9876543210&pvs=4
+      //   → https://www.notion.so/0123456789abcdef0123456789abcdef?v=fedcba9876543210fedcba9876543210
+      //   https://app.notion.com/p/Example-Page-0123456789abcdef0123456789abcdef?source=copy_link
+      //   → https://app.notion.com/p/0123456789abcdef0123456789abcdef
       const NOTION_PAGE_ID = /(?:^|-)([0-9a-f]{32})$/i;
 
       function cleanNotion(url) {
@@ -390,6 +465,14 @@
       // LinkedIn: shared posts become https://<host>/feed/update/urn:li:activity:<ID>/
       // and job posts become https://<host>/jobs/view/<ID>/. Other pages lose
       // LinkedIn's own tracking parameters.
+      //
+      // Examples:
+      //   https://www.linkedin.com/posts/example-person_example-title-activity-7123456789012345678-AbCd?utm_source=share
+      //   → https://www.linkedin.com/feed/update/urn:li:activity:7123456789012345678/
+      //   https://www.linkedin.com/jobs/view/example-engineer-at-example-co-3901234567/?trk=public_jobs
+      //   → https://www.linkedin.com/jobs/view/3901234567/
+      //   https://www.linkedin.com/in/example-person/?trk=public_profile
+      //   → https://www.linkedin.com/in/example-person/
       const LINKEDIN_POST_PATH = /^\/posts\/[^/]*-activity-(\d+)-[^/]*\/?$/;
       const LINKEDIN_JOB_PATH = /^\/jobs\/view\/(?:[^/]*-)?(\d+)\/?$/;
 
@@ -418,6 +501,12 @@
       // https://<host>/r/<subreddit>/comments/<post ID>/, and every link
       // loses the share-tracking parameters. Links to a comment keep their
       // full path, since the comment ID comes after the title.
+      //
+      // Examples:
+      //   https://www.reddit.com/r/example/comments/abc123/example_post_title/?share_id=xyz&utm_source=share
+      //   → https://www.reddit.com/r/example/comments/abc123/
+      //   https://www.reddit.com/r/example/comments/abc123/example_post_title/def456/?share_id=xyz
+      //   → https://www.reddit.com/r/example/comments/abc123/example_post_title/def456/
       const REDDIT_POST_PATH = /^(\/r\/[^/]+\/comments\/[a-z0-9]+)\/[^/]+\/?$/i;
 
       function cleanReddit(url) {
@@ -439,6 +528,12 @@
       // title is optional for issues. Reviews end in a 12-character ID after
       // the title, which is what Linear looks them up by. Links to a comment
       // (#...) are kept.
+      //
+      // Examples:
+      //   https://linear.app/example/issue/ENG-123/fix-the-example-bug#comment-abc123
+      //   → https://linear.app/example/issue/ENG-123#comment-abc123
+      //   https://linear.app/example/review/fix-the-example-bug-0123456789ab
+      //   → https://linear.app/example/review/0123456789ab
       const LINEAR_ISSUE_PATH = /^(\/[^/]+\/issue\/[a-z0-9]+-\d+)\/[^/]+\/?$/i;
       const LINEAR_REVIEW_PATH = /^(\/[^/]+\/review\/)[^/]*-([0-9a-f]{12})\/?$/i;
 
@@ -462,6 +557,10 @@
       // Figma: drop the sharer's tracking token (t) and user ID (fuid). The
       // file name stays in the path, and parameters like node-id, which
       // pick the frame to open, are kept.
+      //
+      // Example:
+      //   https://www.figma.com/design/AbCdEfGhIjKlMnOp/Example-File?node-id=1-2&t=AbCdEf-0&fuid=1234567890
+      //   → https://www.figma.com/design/AbCdEfGhIjKlMnOp/Example-File?node-id=1-2
       function cleanFigma(url) {
         if (!isSite(url.hostname, "figma.com")) {
           return null;
@@ -503,7 +602,12 @@
       // ---------------------------------------------------------------
 
       // Short links redirect to the real address, which can only be found by
-      // visiting them, so they can't be fully cleaned here.
+      // visiting them, so they can't be fully cleaned here. They're left
+      // as they are, with a note saying so.
+      //
+      // Example:
+      //   https://bit.ly/example
+      //   → (unchanged)
       const SHORT_LINK_HOSTS = [
         "a.co", "amzn.eu", "amzn.to", "bit.ly", "ebay.us", "search.app",
         "spotify.link", "t.co",
