@@ -69,13 +69,6 @@
     </div>
 
     <script>
-      // ---------------------------------------------------------------
-      // Helpers
-      //
-      // Every function here returns a new URL and leaves its input alone,
-      // so the original can be compared with the result afterwards.
-      // ---------------------------------------------------------------
-
       // True for "example.com" itself and any subdomain like "www.example.com".
       function isSite(hostname, domain) {
         return hostname === domain || hostname.endsWith("." + domain);
@@ -90,6 +83,7 @@
       }
 
       // Removes parameters whose name is in `names` or starts with one of `prefixes`.
+      // Works on a copy, so the original can be compared with the result.
       function removeParams(url, names, prefixes = []) {
         const cleaned = new URL(url.href);
         // Copy the keys first, since deleting while iterating skips entries.
@@ -114,16 +108,11 @@
         return cleaned;
       }
 
-      // ---------------------------------------------------------------
-      // Tracking parameters removed from every link
-      //
-      // Collected from these lists:
+      // Tracking parameters removed from every link, collected from these lists:
       // https://github.com/jparise/chrome-utm-stripper
       // https://github.com/AdguardTeam/AdguardFilters/tree/master/TrackParamFilter/sections
       // https://github.com/brave/brave-core/blob/master/components/query_filter/utils.cc
       // https://github.com/mpchadwick/tracking-query-params-registry/blob/master/_data/params.csv
-      // ---------------------------------------------------------------
-
       const TRACKING_PARAMS = [
         "ScCid", "_branch_match_id", "_bta_c", "_bta_tid", "_ga", "_gl",
         "_hsenc", "_hsmi", "_ke", "_kx", "ad_id", "campaign_id", "campid",
@@ -141,20 +130,6 @@
       const TRACKING_PREFIXES = [
         "utm_", "hsa_", "matomo_", "mtm_", "piwik_", "pk_", "trk_", "tw_",
       ];
-
-      // ---------------------------------------------------------------
-      // Site rules
-      //
-      // Each rule returns a cleaned URL, or null if the link isn't for that
-      // site. The first rule that matches wins, and the generic tracking
-      // cleanup runs afterwards either way.
-      //
-      // Each rule's comment ends with made-up examples of a link and what
-      // it should become. To check a change, paste them in, or open
-      // clean-link/#<link>. Links with no site rule only lose tracking:
-      //   https://example.com/article?id=7&utm_source=newsletter&fbclid=abc
-      //   → https://example.com/article?id=7
-      // ---------------------------------------------------------------
 
       // Amazon: product pages become https://<host>/dp/<product ID>.
       //
@@ -577,6 +552,10 @@
         return removeParams(url, ["t", "fuid"]);
       }
 
+      // Each rule returns a cleaned URL, or null if the link isn't for that
+      // site, and the first one that matches wins. Each rule's comment ends
+      // with made-up examples of a link and what it should become. To check
+      // a change, paste them in, or open clean-link/#<link>.
       const SITE_RULES = [
         cleanAmazon,
         cleanEbay,
@@ -593,6 +572,10 @@
         cleanFigma,
       ];
 
+      // Tracking parameters are removed whether or not a site rule matched,
+      // so links with no site rule only lose tracking:
+      //   https://example.com/article?id=7&utm_source=newsletter&fbclid=abc
+      //   → https://example.com/article?id=7
       function cleanUrl(url) {
         let cleaned = url;
         for (const rule of SITE_RULES) {
@@ -604,10 +587,6 @@
         }
         return removeParams(cleaned, TRACKING_PARAMS, TRACKING_PREFIXES);
       }
-
-      // ---------------------------------------------------------------
-      // Reading the input
-      // ---------------------------------------------------------------
 
       // Short links redirect to the real address, which can only be found by
       // visiting them, so they can't be fully cleaned here. They're left
@@ -677,10 +656,6 @@
         }
         return [...removed];
       }
-
-      // ---------------------------------------------------------------
-      // Page
-      // ---------------------------------------------------------------
 
       const inputElement = document.getElementById("input");
       const errorElement = document.getElementById("error");

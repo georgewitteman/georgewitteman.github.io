@@ -92,10 +92,6 @@
     </details>
 
     <script>
-      // ---------------------------------------------------------------
-      // Settings
-      // ---------------------------------------------------------------
-
       // Both speak the same JSON format. Cloudflare needs the Accept header,
       // which Google ignores. Neither needs a CORS preflight.
       const RESOLVERS = [
@@ -146,10 +142,6 @@
       const nameInput = document.getElementById("name");
       const summary = document.getElementById("summary");
       const results = document.getElementById("results");
-
-      // ---------------------------------------------------------------
-      // Reading what was typed
-      // ---------------------------------------------------------------
 
       function parseIpv4(text) {
         const parts = text.split(".");
@@ -223,10 +215,6 @@
           return null;
         }
       }
-
-      // ---------------------------------------------------------------
-      // Formatting
-      // ---------------------------------------------------------------
 
       // Not every browser has Intl.DurationFormat. Where it's missing,
       // durations are shown in plain seconds only.
@@ -393,10 +381,6 @@
         return "?q=" + encodeURIComponent(name);
       }
 
-      // ---------------------------------------------------------------
-      // Querying
-      // ---------------------------------------------------------------
-
       // Returns { resolver, error } if the request failed, otherwise
       // { resolver, error: null, status, validated, comment, records }.
       // With checkingDisabled, the resolver skips DNSSEC validation.
@@ -495,10 +479,6 @@
         return text;
       }
 
-      // ---------------------------------------------------------------
-      // Combining the two resolvers' answers
-      // ---------------------------------------------------------------
-
       // Turns one resolver's records into list items, each with its TTLs.
       function itemsFromOutcome(recordType, outcome) {
         return outcome.records.map((record) => ({
@@ -535,10 +515,6 @@
         // Numeric sorting puts "5 mx2" before "10 mx1" and orders IPs sensibly.
         return [...items].sort((a, b) => a.data.localeCompare(b.data, undefined, { numeric: true }));
       }
-
-      // ---------------------------------------------------------------
-      // Showing results
-      // ---------------------------------------------------------------
 
       function describeTtls(ttls) {
         const allSame = ttls.every((entry) => entry.ttl === ttls[0].ttl);
@@ -787,25 +763,20 @@
         renderResults(query, types, outcomesByType, (performance.now() - started) / 1000);
       }
 
-      // ---------------------------------------------------------------
-      // Keeping the address bar in sync
-      //
-      // The name looked up is in ?q=. Each lookup of a new name adds a
-      // history entry, so Back returns to the previous name, like a search
-      // page. The first lookup from an empty page replaces it instead, so
-      // Back never lands on an empty form. The name is also in the page
-      // title, so history entries can be told apart.
-      // ---------------------------------------------------------------
-
       function nameFromAddress() {
         return new URLSearchParams(location.search).get("q") || "";
       }
 
+      // The name in the title tells history entries apart.
       function showNameInTitle() {
         const name = nameFromAddress();
         document.title = name === "" ? "DNS lookup" : name + " – DNS lookup";
       }
 
+      // Puts the name in ?q=. Each lookup of a new name adds a history
+      // entry, so Back returns to the previous name, like a search page.
+      // The first lookup from an empty page replaces it instead, so Back
+      // never lands on an empty form.
       function updateAddress(name) {
         if (name === nameFromAddress()) {
           return;
@@ -837,10 +808,6 @@
         showNameInTitle();
         lookUp(nameInput.value);
       });
-
-      // ---------------------------------------------------------------
-      // Start
-      // ---------------------------------------------------------------
 
       nameInput.value = nameFromAddress();
       showNameInTitle();
