@@ -398,10 +398,16 @@
         const checkNumber = latestCheck[section];
         showResult(section, "", "Checking...");
 
-        const ip = parseIp(text);
+        let ip = parseIp(text);
         if (ip === null) {
           showResult(section, "err", "That is not a valid IP address.");
           return;
+        }
+
+        // An IPv4-mapped IPv6 address, e.g. "::ffff:192.0.2.1", is the IPv4
+        // address in its last 32 bits, after 80 zero bits and 16 one bits.
+        if (ip.version === 6 && ip.value >> 32n === 0xffffn) {
+          ip = { version: 4, value: ip.value & 0xffffffffn };
         }
 
         let match;
