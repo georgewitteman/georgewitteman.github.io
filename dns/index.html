@@ -56,7 +56,9 @@
       address to look up its reverse DNS name.
     </p>
 
-    <form id="form">
+    <!-- novalidate stops the browser blocking the form over a server that
+         isn't a URL, so the page can say what's wrong instead. -->
+    <form id="form" novalidate>
       <p class="row">
         <input id="name" aria-label="Domain name or IP address" placeholder="e.g. example.com" autocomplete="off" spellcheck="false">
         <button>Look up</button>
