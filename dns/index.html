@@ -786,7 +786,14 @@
           while (!reader.atEnd()) {
             bytes.push(...reader.characterString());
           }
-          return new TextDecoder().decode(new Uint8Array(bytes));
+          // With fatal, TextDecoder throws on bytes that aren't UTF-8
+          // instead of turning them into U+FFFD, so they can be shown
+          // escaped and not lost.
+          try {
+            return new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array(bytes));
+          } catch {
+            return escapeText(bytes, "");
+          }
         },
         CAA: (reader) => {
           const flags = reader.uint8();
