@@ -540,12 +540,17 @@
         // Returns a name like "example.com.". A name can end with a pointer
         // to the rest of the name earlier in the message (RFC 1035 section
         // 4.1.4): two bytes whose top two bits are set, with the other 14
-        // giving the offset. The jumps are capped so a pointer loop can't
-        // hang the page.
+        // giving the offset. A bad message's pointers can loop, or reuse
+        // parts to build huge names, so both the jumps and the name's length
+        // are capped, or a single message could hang the page.
         name() {
           const labels = [];
           let position = this.position;
           let jumps = 0;
+          // The name's length as sent without pointers: each label and its
+          // length byte, then the zero byte at the end. DNS allows at most
+          // 255 (RFC 1035 section 2.3.4).
+          let wireLength = 1;
           while (true) {
             const reader = new MessageReader(this.view, position, this.view.byteLength);
             const length = reader.uint8();
@@ -569,6 +574,10 @@
             }
             if (length > 63) {
               throw new RangeError("Unknown label type");
+            }
+            wireLength += 1 + length;
+            if (wireLength > 255) {
+              throw new RangeError("Name longer than 255 bytes");
             }
             labels.push(formatLabel(reader.bytes(length)));
             position += 1 + length;
