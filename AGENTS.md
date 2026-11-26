@@ -61,7 +61,18 @@ Optimize for readability over brevity.
 - Use descriptive names (`address`, `prefixLength`), not `s`, `p`, `n`.
   `i` is fine for a plain index loop.
 - Prefer early returns and `async`/`await` over nesting and `.then` chains.
-- Group code into commented sections and explain anything non-obvious.
+- Group code into commented sections. Put each comment on its own lines
+  above the code it explains, and leave a blank line between unrelated
+  blocks.
+- No doc comments at the top of files. Why a file exists goes in the
+  commit that adds it.
+- Explain syntax and APIs a reader might look up, like a regex, `??=`, or
+  `grep -Evc`, and name the one you mean. For dense notation, explain the
+  notation rather than each value. Skip the obvious, and keep comments as
+  short as clarity allows.
+- Avoid comments that go stale: references to other files or how other
+  code works, history, dates, versions, and measurements. Explaining why a
+  value was chosen is fine, even if it names something else.
 - HTML: two-space indent, `<head>` and `<body>` indented inside `<html>`,
   no self-closing slash on void elements (`<meta>`, not `<meta />`), and
   every form control has a label (`aria-label` is fine).
