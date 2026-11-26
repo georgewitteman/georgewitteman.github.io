@@ -1099,6 +1099,7 @@
       // Returns { text, isProblem }, or null if there's nothing to judge by.
       function describeDnssec(types, outcomes) {
         const unvalidatedTypes = [];
+        const truncatedTypes = [];
         let anyFailed = false;
         let anyAnswered = false;
         let anyValidated = false;
@@ -1114,10 +1115,16 @@
           if (!isAnswer(outcome)) {
             return;
           }
-          anyAnswered = true;
           if (outcome.dnssecFailed === true) {
             anyFailed = true;
           }
+          // A cut-short answer is never marked validated, so it doesn't show
+          // whether the domain is signed. It's named separately instead.
+          if (outcome.truncated) {
+            truncatedTypes.push(recordType.name);
+            return;
+          }
+          anyAnswered = true;
           if (outcome.validated) {
             anyValidated = true;
           } else {
@@ -1141,17 +1148,21 @@
         if (!anyAnswered) {
           return null;
         }
-        if (!anyUnvalidated) {
-          return { text: "DNSSEC: signed and validated.", isProblem: false };
-        }
         if (!anyValidated) {
           return { text: "DNSSEC: not validated. The domain probably isn't signed.", isProblem: false };
         }
-        let text = "DNSSEC: partly validated.";
-        if (unvalidatedTypes.length > 0) {
-          text += " Not validated: " + unvalidatedTypes.join(", ") + ".";
+
+        let text = "DNSSEC: signed and validated.";
+        if (anyUnvalidated) {
+          text = "DNSSEC: partly validated.";
+          if (unvalidatedTypes.length > 0) {
+            text += " Not validated: " + unvalidatedTypes.join(", ") + ".";
+          }
+          text += " This usually means the name is an alias (CNAME) for a name on a domain that isn't signed.";
         }
-        text += " This usually means the name is an alias (CNAME) for a name on a domain that isn't signed.";
+        if (truncatedTypes.length > 0) {
+          text += " Not validated because the server cut the answer short: " + truncatedTypes.join(", ") + ".";
+        }
         return { text, isProblem: false };
       }
 
