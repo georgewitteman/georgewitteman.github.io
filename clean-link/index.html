@@ -708,7 +708,10 @@
       // A scheme at the start of a link, like "mailto:" or "ftp:": a letter,
       // then letters, digits, "+" or "-", then ":". Schemes may also have
       // ".", but it's left out so "example.com:8080" reads as a host and port.
-      const SCHEME = /^([a-z][a-z0-9+-]*):/i;
+      // (?!...) rules out a match followed by a port, up to five digits that
+      // end the text or come before "/", "?" or "#", so "localhost:8080" is
+      // a host and port too.
+      const SCHEME = /^([a-z][a-z0-9+-]*):(?!\d{1,5}(?:[/?#]|$))/i;
 
       // Accepts a bare link ("amazon.com/dp/..."), a full link, or shared
       // text with a link in it ("Check this out: https://...").
@@ -740,9 +743,11 @@
         if (url.protocol !== "http:" && url.protocol !== "https:") {
           return null;
         }
-        // A bare link needs a dot in its host, like "example.com", so a
-        // word like "hello" isn't taken for one.
-        if (embeddedLink === null && !url.hostname.includes(".")) {
+        // A bare link needs a dot in its host, like "example.com", a port,
+        // or to be localhost, so a word like "hello" isn't taken for one.
+        const looksLikeHost =
+          url.hostname.includes(".") || url.port !== "" || url.hostname === "localhost";
+        if (embeddedLink === null && !looksLikeHost) {
           return null;
         }
         return url;
