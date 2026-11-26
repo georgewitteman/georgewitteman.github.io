@@ -892,11 +892,13 @@
       // example from a bookmark. It's read from the # part because browsers
       // never send that to the server, so the link stays on this device.
       // Everything after the first "#" is used, so a link's own "&" and "#"
-      // parts survive. An encoded link has no plain "://", so it's decoded
-      // first.
+      // parts survive. A link that was encoded as a whole, like
+      // "https%3A%2F%2Fexample.com", is decoded first. Anything else is
+      // used as written, so escapes like "%26" in a link stay as they are.
       function readLinkFromAddress() {
         const value = location.hash.slice(1);
-        if (value === "" || value.includes("://")) {
+        // "http" or "https", then %3A, the encoded ":".
+        if (!/^https?%3A/i.test(value)) {
           return value;
         }
         try {
