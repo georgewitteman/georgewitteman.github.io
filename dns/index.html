@@ -18,8 +18,9 @@
       button {
         font: inherit;
       }
-      form {
+      .row {
         display: flex;
+        align-items: baseline;
         gap: 0.5rem;
       }
       input {
@@ -51,14 +52,20 @@
     <p><a href="../">&larr; Home</a></p>
     <h1>DNS lookup</h1>
     <p>
-      Looks up a name's DNS records with both Google Public DNS and Cloudflare
-      (1.1.1.1), and shows where their answers differ. Enter an IP address to
-      look up its reverse DNS name.
+      Looks up a name's DNS records with a DNS-over-HTTPS server. Enter an IP
+      address to look up its reverse DNS name.
     </p>
 
     <form id="form">
-      <input id="name" aria-label="Domain name or IP address" placeholder="e.g. example.com" autocomplete="off" spellcheck="false">
-      <button>Look up</button>
+      <p class="row">
+        <input id="name" aria-label="Domain name or IP address" placeholder="e.g. example.com" autocomplete="off" spellcheck="false">
+        <button>Look up</button>
+      </p>
+      <p class="row">
+        <label for="server">Server</label>
+        <input id="server" type="url" autocomplete="off" spellcheck="false">
+      </p>
+      <p id="server-examples" class="muted">Examples:</p>
     </form>
 
     <div id="summary"></div>
@@ -74,16 +81,17 @@
           <code>_443._tcp.example.com</code>.
         </li>
         <li>
-          TTL (time to live) is how long the resolver will keep using its
-          cached copy of a record. It counts down, so it often differs a little
-          between Google and Cloudflare.
+          TTL (time to live) is how long the server will keep using its
+          cached copy of a record. It counts down, so it changes between
+          lookups.
         </li>
         <li>
-          Answers can differ between the two for names behind CDNs or load
-          balancers, which hand out different addresses depending on who asks.
+          Any DNS-over-HTTPS server works, as long as it allows requests from
+          web pages (CORS). The server is kept in the page address, so links
+          and bookmarks keep it too.
         </li>
         <li>
-          When a signed domain's DNSSEC is broken, the resolvers refuse to
+          When a signed domain's DNSSEC is broken, the server refuses to
           answer. The page then asks again with validation turned off and
           shows that answer with a warning.
         </li>
@@ -92,11 +100,13 @@
     </details>
 
     <script>
-      // Any DNS-over-HTTPS server (RFC 8484) works here.
-      const RESOLVERS = [
-        { name: "Google", url: "https://dns.google/dns-query" },
+      // Any DNS-over-HTTPS server (RFC 8484) works. These are offered as
+      // examples, and the first is used when none is given.
+      const SERVER_EXAMPLES = [
         { name: "Cloudflare", url: "https://cloudflare-dns.com/dns-query" },
+        { name: "Google", url: "https://dns.google/dns-query" },
       ];
+      const DEFAULT_SERVER = SERVER_EXAMPLES[0].url;
 
       const RECORD_TYPES = [
         { name: "A", number: 1, description: "IPv4 addresses." },
@@ -128,16 +138,18 @@
       const STATUS_NAMES = {
         0: "NOERROR",
         1: "FORMERR (the request was malformed)",
-        2: "SERVFAIL (the resolver couldn't get an answer)",
+        2: "SERVFAIL (the server couldn't get an answer)",
         3: "NXDOMAIN (the name doesn't exist)",
-        4: "NOTIMP (the resolver doesn't support this query)",
-        5: "REFUSED (the resolver refused to answer)",
+        4: "NOTIMP (the server doesn't support this query)",
+        5: "REFUSED (the server refused to answer)",
       };
 
       const TIMEOUT_MS = 10000;
 
       const form = document.getElementById("form");
       const nameInput = document.getElementById("name");
+      const serverInput = document.getElementById("server");
+      const serverExamples = document.getElementById("server-examples");
       const summary = document.getElementById("summary");
       const results = document.getElementById("results");
 
@@ -265,16 +277,6 @@
         return name.replace(/\.$/, "");
       }
 
-      // Used to match the same record from both resolvers, ignoring
-      // differences in case, spacing, and trailing dots.
-      function recordKey(recordType, record) {
-        let data = record.data.trim().replace(/\s+/g, " ");
-        if (recordType.name !== "TXT") {
-          data = withoutTrailingDot(data.toLowerCase());
-        }
-        return withoutTrailingDot(record.name.toLowerCase()) + " " + data;
-      }
-
       // The host name inside a record, for a "look up" link, or null.
       function targetName(recordType, data) {
         const fields = data.split(/\s+/);
@@ -338,9 +340,28 @@
         return "https://bgp.he.net/ip/" + encodeURIComponent(ip);
       }
 
-      // Relative, so it works under any path.
+      // Relative, so it works under any path. Keeps the server in use.
       function lookupUrl(name) {
-        return "?q=" + encodeURIComponent(name);
+        const params = new URLSearchParams({ q: name });
+        const server = new URLSearchParams(location.search).get("server");
+        if (server) {
+          params.set("server", server);
+        }
+        return "?" + params;
+      }
+
+      // Returns the server's URL, or null unless it's an https:// URL.
+      function parseServer(text) {
+        let url;
+        try {
+          url = new URL(text.trim());
+        } catch {
+          return null;
+        }
+        if (url.protocol !== "https:") {
+          return null;
+        }
+        return url;
       }
 
       // Header flag bits: RD asks the server to look the name up, AD asks
@@ -813,11 +834,11 @@
         };
       }
 
-      // Returns { resolver, error } if the request failed, otherwise
-      // { resolver, error: null, status, validated, comment, records }.
-      // With checkingDisabled, the resolver skips DNSSEC validation.
-      async function fetchAnswer(resolver, name, recordType, checkingDisabled) {
-        const url = new URL(resolver.url);
+      // Returns { error } if the request failed, otherwise
+      // { error: null, status, validated, comment, records }.
+      // With checkingDisabled, the server skips DNSSEC validation.
+      async function fetchAnswer(server, name, recordType, checkingDisabled) {
+        const url = new URL(server.href);
         url.searchParams.set("dns", toBase64Url(buildQuery(name, recordType.number, checkingDisabled)));
 
         // AbortController cancels the fetch if it takes longer than TIMEOUT_MS.
@@ -832,14 +853,14 @@
             signal: controller.signal,
           });
           if (!response.ok) {
-            return { resolver, error: "HTTP error " + response.status };
+            return { error: "The server answered with HTTP error " + response.status };
           }
           buffer = await response.arrayBuffer();
         } catch (error) {
           if (error.name === "AbortError") {
-            return { resolver, error: "timed out" };
+            return { error: "The server took too long to answer" };
           }
-          return { resolver, error: "couldn't connect" };
+          return { error: "Couldn't connect to the server" };
         } finally {
           clearTimeout(timer);
         }
@@ -848,13 +869,12 @@
         try {
           message = parseMessage(buffer);
         } catch {
-          return { resolver, error: "sent an answer this page couldn't read" };
+          return { error: "The server sent an answer this page couldn't read" };
         }
 
         // Answers can include other types, like the CNAME chain that led
         // to an A record. Those are shown under their own type instead.
         return {
-          resolver,
           error: null,
           status: message.status,
           validated: message.validated,
@@ -863,16 +883,16 @@
         };
       }
 
-      // Validating resolvers answer SERVFAIL when a signed domain's DNSSEC
+      // Validating servers answer SERVFAIL when a signed domain's DNSSEC
       // is broken, the same as for other failures. Asking again with
       // validation turned off tells them apart: if that gets an answer,
       // DNSSEC was the problem. That answer is used, marked dnssecFailed.
-      async function queryResolver(resolver, name, recordType) {
-        const outcome = await fetchAnswer(resolver, name, recordType, false);
+      async function queryServer(server, name, recordType) {
+        const outcome = await fetchAnswer(server, name, recordType, false);
         if (outcome.error !== null || outcome.status !== 2) {
           return outcome;
         }
-        const unchecked = await fetchAnswer(resolver, name, recordType, true);
+        const unchecked = await fetchAnswer(server, name, recordType, true);
         if (!isAnswer(unchecked)) {
           return outcome;
         }
@@ -888,11 +908,11 @@
       }
 
       function describeProblem(outcome) {
-        let text = outcome.resolver.name + ": ";
+        let text;
         if (outcome.error !== null) {
-          text += outcome.error;
+          text = outcome.error;
         } else {
-          text += STATUS_NAMES[outcome.status] || "status " + outcome.status;
+          text = STATUS_NAMES[outcome.status] || "Status " + outcome.status;
         }
         if (outcome.comment) {
           text += ". " + outcome.comment;
@@ -900,61 +920,20 @@
         return text;
       }
 
-      // Turns one resolver's records into list items, each with its TTLs.
-      function itemsFromOutcome(recordType, outcome) {
-        return outcome.records.map((record) => ({
-          name: record.name,
-          data: record.data,
-          key: recordKey(recordType, record),
-          ttls: [{ resolver: outcome.resolver, ttl: record.ttl }],
-        }));
-      }
-
-      // Returns a list of groups to show, each { label, items }. If both
-      // resolvers agree there's one unlabeled group; otherwise one per resolver.
-      function groupRecords(recordType, answered) {
-        const lists = answered.map((outcome) => itemsFromOutcome(recordType, outcome));
-        if (lists.length === 1) {
-          return [{ label: null, items: lists[0] }];
-        }
-
-        const [first, second] = lists;
-        const secondByKey = new Map(second.map((item) => [item.key, item]));
-        const agree = first.length === second.length && first.every((item) => secondByKey.has(item.key));
-        if (!agree) {
-          return answered.map((outcome, index) => ({ label: outcome.resolver.name, items: lists[index] }));
-        }
-
-        const merged = first.map((item) => ({
-          ...item,
-          ttls: [...item.ttls, ...secondByKey.get(item.key).ttls],
-        }));
-        return [{ label: null, items: merged }];
-      }
-
-      function sortItems(items) {
+      function sortRecords(records) {
         // Numeric sorting puts "5 mx2" before "10 mx1" and orders IPs sensibly.
-        return [...items].sort((a, b) => a.data.localeCompare(b.data, undefined, { numeric: true }));
+        return [...records].sort((a, b) => a.data.localeCompare(b.data, undefined, { numeric: true }));
       }
 
-      function describeTtls(ttls) {
-        const allSame = ttls.every((entry) => entry.ttl === ttls[0].ttl);
-        if (allSame) {
-          return "TTL " + formatTtl(ttls[0].ttl);
-        }
-        const parts = ttls.map((entry) => formatTtl(entry.ttl) + " from " + entry.resolver.name);
-        return "TTL " + parts.join(", ");
-      }
-
-      function renderItem(list, recordType, item, queryName) {
+      function renderRecord(list, recordType, record, queryName) {
         const row = addElement(list, "li");
-        addElement(row, "code", item.data);
+        addElement(row, "code", record.data);
 
         if (recordType.name === "A" || recordType.name === "AAAA") {
           row.append(" ");
-          addLink(row, "WHOIS", whoisUrl(item.data));
+          addLink(row, "WHOIS", whoisUrl(record.data));
         }
-        const target = targetName(recordType, item.data);
+        const target = targetName(recordType, record.data);
         if (target) {
           row.append(" ");
           addLink(row, "Look up", lookupUrl(target));
@@ -962,68 +941,50 @@
 
         const details = [];
         // Shown when the record belongs to another name, e.g. the end of a CNAME chain.
-        if (withoutTrailingDot(item.name.toLowerCase()) !== queryName) {
-          details.push("For " + withoutTrailingDot(item.name));
+        if (withoutTrailingDot(record.name.toLowerCase()) !== queryName) {
+          details.push("For " + withoutTrailingDot(record.name));
         }
-        details.push(describeTtls(item.ttls));
+        details.push("TTL " + formatTtl(record.ttl));
         addElement(row, "div", details.join(" · "), "muted");
 
         if (recordType.name === "SOA") {
-          const soa = describeSoa(item.data);
+          const soa = describeSoa(record.data);
           if (soa) {
             addElement(row, "div", soa, "muted");
           }
         }
       }
 
-      function renderSection(recordType, outcomes, queryName) {
-        const answered = outcomes.filter(isAnswer);
-        const failed = outcomes.filter((outcome) => !isAnswer(outcome));
-        const groups = answered.length > 0 ? groupRecords(recordType, answered) : [];
-        const recordCount = Math.max(0, ...groups.map((group) => group.items.length));
+      function renderSection(recordType, outcome, queryName) {
+        const recordCount = isAnswer(outcome) ? outcome.records.length : 0;
 
         const section = addElement(results, "section");
         const heading = recordCount === 1 ? "1 record" : recordCount + " records";
         addElement(section, "h2", recordType.name + " (" + heading + ")");
         addElement(section, "p", recordType.description, "muted");
 
-        for (const outcome of failed) {
+        if (!isAnswer(outcome)) {
           addElement(section, "p", describeProblem(outcome), "problem");
+          return;
         }
-        for (const outcome of answered.filter((answer) => answer.dnssecFailed === true)) {
-          let warning = outcome.resolver.name + ": failed DNSSEC validation, so this is its answer with validation turned off. It may have been tampered with.";
+        if (outcome.dnssecFailed === true) {
+          let warning = "Failed DNSSEC validation, so this is the answer with validation turned off. It may have been tampered with.";
           if (outcome.comment) {
             warning += " " + outcome.comment;
           }
           addElement(section, "p", warning, "problem");
         }
-        if (groups.length > 1) {
-          addElement(section, "p", "Google and Cloudflare returned different answers.");
-        }
 
-        for (const group of groups) {
-          if (group.label) {
-            addElement(section, "h3", group.label);
-          }
-          if (group.items.length === 0) {
-            addElement(section, "p", "No records.");
-            continue;
-          }
-          const list = addElement(section, "ul", undefined, "records");
-          for (const item of sortItems(group.items)) {
-            renderItem(list, recordType, item, queryName);
-          }
+        const list = addElement(section, "ul", undefined, "records");
+        for (const record of sortRecords(outcome.records)) {
+          renderRecord(list, recordType, record, queryName);
         }
-      }
-
-      function hasRecords(outcomes) {
-        return outcomes.some((outcome) => isAnswer(outcome) && outcome.records.length > 0);
       }
 
       // Returns { text, isProblem }, or null if there's nothing to judge by.
-      function describeDnssec(types, outcomesByType) {
-        const failedResolvers = new Set();
+      function describeDnssec(types, outcomes) {
         const unvalidatedTypes = [];
+        let anyFailed = false;
         let anyAnswered = false;
         let anyValidated = false;
         let anyUnvalidated = false;
@@ -1034,33 +995,31 @@
           if (recordType.name === "DS") {
             return;
           }
-          const answered = outcomesByType[index].filter(isAnswer);
-          if (answered.length === 0) {
+          const outcome = outcomes[index];
+          if (!isAnswer(outcome)) {
             return;
           }
           anyAnswered = true;
-          for (const outcome of answered) {
-            if (outcome.dnssecFailed === true) {
-              failedResolvers.add(outcome.resolver.name);
-            }
+          if (outcome.dnssecFailed === true) {
+            anyFailed = true;
           }
-          if (answered.every((outcome) => outcome.validated)) {
+          if (outcome.validated) {
             anyValidated = true;
           } else {
             anyUnvalidated = true;
             // Only list types with records. Empty ones aren't worth naming.
-            if (answered.some((outcome) => outcome.records.length > 0)) {
+            if (outcome.records.length > 0) {
               unvalidatedTypes.push(recordType.name);
             }
           }
         });
 
-        if (failedResolvers.size > 0) {
+        if (anyFailed) {
           return {
-            text: "DNSSEC: validation failed on " + [...failedResolvers].join(" and ") +
-              ". The domain is signed, but its signatures don't check out, so" +
-              " resolvers that check them refuse to answer. The answers below" +
-              " marked as failing were fetched with validation turned off.",
+            text: "DNSSEC: validation failed. The domain is signed, but its" +
+              " signatures don't check out, so servers that check them refuse" +
+              " to answer. The answers below marked as failing were fetched" +
+              " with validation turned off.",
             isProblem: true,
           };
         }
@@ -1081,9 +1040,8 @@
         return { text, isProblem: false };
       }
 
-      function renderResults(query, types, outcomesByType, seconds) {
+      function renderResults(query, server, types, outcomes, seconds) {
         const queryName = withoutTrailingDot(query.name);
-        const outcomes = outcomesByType.flat();
 
         // A name that doesn't exist returns NXDOMAIN for every type.
         const responses = outcomes.filter((outcome) => outcome.error === null);
@@ -1092,7 +1050,13 @@
           return;
         }
         if (responses.length === 0) {
-          addElement(summary, "p", "Couldn't reach Google or Cloudflare. Check your connection and try again.", "problem");
+          addElement(
+            summary,
+            "p",
+            "No answers from " + server.host + ". " + outcomes[0].error + ". Check the server address and" +
+              " your connection. The server also has to allow requests from web pages (CORS).",
+            "problem"
+          );
           return;
         }
 
@@ -1100,25 +1064,24 @@
         const empty = [];
         const failed = [];
         types.forEach((recordType, index) => {
-          const typeOutcomes = outcomesByType[index];
-          if (hasRecords(typeOutcomes)) {
-            withRecords.push(index);
-          } else if (typeOutcomes.every(isAnswer)) {
-            empty.push(recordType.name);
-          } else {
+          const outcome = outcomes[index];
+          if (!isAnswer(outcome)) {
             failed.push(index);
+          } else if (outcome.records.length > 0) {
+            withRecords.push(index);
+          } else {
+            empty.push(recordType.name);
           }
         });
 
-        // Summary
         const typeCount = types.length === 1 ? "1 record type" : types.length + " record types";
         addElement(
           summary,
           "p",
-          "Checked " + typeCount + " with Google and Cloudflare in " + seconds.toFixed(1) +
+          "Checked " + typeCount + " with " + server.host + " in " + seconds.toFixed(1) +
             " seconds, at " + new Date().toLocaleTimeString() + "."
         );
-        const dnssec = describeDnssec(types, outcomesByType);
+        const dnssec = describeDnssec(types, outcomes);
         if (dnssec) {
           addElement(summary, "p", dnssec.text, dnssec.isProblem ? "problem" : undefined);
         }
@@ -1129,19 +1092,19 @@
           addElement(summary, "p", "No records found.");
         }
 
-        // A section per type with records, then types with no records where a lookup failed.
+        // A section per type with records, then types where the lookup failed.
         for (const index of withRecords) {
-          renderSection(types[index], outcomesByType[index], queryName);
+          renderSection(types[index], outcomes[index], queryName);
         }
         for (const index of failed) {
-          renderSection(types[index], outcomesByType[index], queryName);
+          renderSection(types[index], outcomes[index], queryName);
         }
       }
 
       // Each lookup gets a number, so a slow earlier lookup can't overwrite a newer one.
       let latestLookupId = 0;
 
-      async function lookUp(text) {
+      async function lookUp(text, serverText) {
         latestLookupId += 1;
         const lookupId = latestLookupId;
         summary.replaceChildren();
@@ -1153,6 +1116,11 @@
         const query = toQuery(text);
         if (!query) {
           addElement(summary, "p", "That doesn't look like a domain name or IP address.", "problem");
+          return;
+        }
+        const server = parseServer(serverText);
+        if (!server) {
+          addElement(summary, "p", "The server should be an https:// address, like " + DEFAULT_SERVER + ".", "problem");
           return;
         }
 
@@ -1174,18 +1142,20 @@
         // Reverse lookups only have PTR records.
         const types = query.ip ? RECORD_TYPES.filter((recordType) => recordType.name === "PTR") : RECORD_TYPES;
         const started = performance.now();
-        const outcomesByType = await Promise.all(
-          types.map((recordType) => Promise.all(RESOLVERS.map((resolver) => queryResolver(resolver, query.name, recordType))))
-        );
+        const outcomes = await Promise.all(types.map((recordType) => queryServer(server, query.name, recordType)));
         if (lookupId !== latestLookupId) {
           return;
         }
         status.remove();
-        renderResults(query, types, outcomesByType, (performance.now() - started) / 1000);
+        renderResults(query, server, types, outcomes, (performance.now() - started) / 1000);
       }
 
       function nameFromAddress() {
         return new URLSearchParams(location.search).get("q") || "";
+      }
+
+      function serverFromAddress() {
+        return new URLSearchParams(location.search).get("server") || DEFAULT_SERVER;
       }
 
       // The name in the title tells history entries apart.
@@ -1194,19 +1164,26 @@
         document.title = name === "" ? "DNS lookup" : name + " – DNS lookup";
       }
 
-      // Puts the name in ?q=. Each lookup of a new name adds a history
-      // entry, so Back returns to the previous name, like a search page.
-      // The first lookup from an empty page replaces it instead, so Back
-      // never lands on an empty form.
-      function updateAddress(name) {
-        if (name === nameFromAddress()) {
-          return;
-        }
+      // Puts the name in ?q=, and the server in ?server= unless it's the
+      // default, so most addresses stay short. Each lookup of a new name or
+      // server adds a history entry, so Back returns to the previous one,
+      // like a search page. The first lookup from an empty page replaces it
+      // instead, so Back never lands on an empty form.
+      function updateAddress(name, serverText) {
         const url = new URL(location.href);
         if (name === "") {
           url.searchParams.delete("q");
         } else {
           url.searchParams.set("q", name);
+        }
+        const server = parseServer(serverText);
+        if (server !== null && server.href === DEFAULT_SERVER) {
+          url.searchParams.delete("server");
+        } else {
+          url.searchParams.set("server", server === null ? serverText.trim() : server.href);
+        }
+        if (url.href === location.href) {
+          return;
         }
 
         if (nameFromAddress() === "") {
@@ -1218,24 +1195,40 @@
         showNameInTitle();
       }
 
+      function submit() {
+        updateAddress(nameInput.value, serverInput.value);
+        lookUp(nameInput.value, serverInput.value);
+      }
+
       form.addEventListener("submit", (event) => {
         event.preventDefault();
-        updateAddress(nameInput.value);
-        lookUp(nameInput.value);
+        submit();
       });
+
+      for (const example of SERVER_EXAMPLES) {
+        serverExamples.append(" ");
+        const button = addElement(serverExamples, "button", example.name);
+        button.type = "button";
+        button.addEventListener("click", () => {
+          serverInput.value = example.url;
+          submit();
+        });
+      }
 
       window.addEventListener("popstate", () => {
         nameInput.value = nameFromAddress();
+        serverInput.value = serverFromAddress();
         showNameInTitle();
-        lookUp(nameInput.value);
+        lookUp(nameInput.value, serverInput.value);
       });
 
       nameInput.value = nameFromAddress();
+      serverInput.value = serverFromAddress();
       showNameInTitle();
       if (nameInput.value === "") {
         nameInput.focus();
       } else {
-        lookUp(nameInput.value);
+        lookUp(nameInput.value, serverInput.value);
       }
     </script>
   </body>

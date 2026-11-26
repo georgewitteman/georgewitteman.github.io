@@ -104,8 +104,9 @@ Keep it short and easy to scan:
   the site root by themselves, so pages don't link to it. Only the home page
   links the iOS icon, since that's the page that gets bookmarked.
 - External services, each of which must fail gracefully: `icanhazip.com`
-  (iCloud page), `dns.google` and `cloudflare-dns.com` (DNS page, which also
-  links to `bgp.he.net`), and `mask-api.icloud.com` (ranges workflow).
+  (iCloud page), `cloudflare-dns.com` and `dns.google` (the DNS page's
+  example servers; it also links to `bgp.he.net`), and
+  `mask-api.icloud.com` (ranges workflow).
 - `icloud-private-relay/ranges.csv`: Apple's list, saved as-is (fields may
   be quoted). The daily workflow rejects downloads that don't look like the
   usual list; if it stops, the page keeps working with older data.
@@ -119,7 +120,8 @@ Keep it short and easy to scan:
   `#<link>`, never `?`, so it doesn't reach the server. The page never
   writes links into the address, so they stay out of browser history.
 - `dns/`: queries are standard DNS-over-HTTPS (RFC 8484 binary messages),
-  not Google's or Cloudflare's JSON APIs, so any DoH server's URL works.
+  not Google's or Cloudflare's JSON APIs, so any DoH server works. It uses
+  one server at a time, chosen in the page or with `?server=`.
 - `dns/`: `?q=` is short because it's typed by hand. Each lookup of a new
   name pushes a history entry, like a search page, except from an empty
   page, so Back never lands on an empty form.
