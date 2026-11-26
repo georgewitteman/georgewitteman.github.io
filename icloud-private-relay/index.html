@@ -237,9 +237,49 @@
         }
 
         const lines = text.split("\n");
-        document.getElementById("meta").textContent =
-          `Checked against ${lines.length.toLocaleString()} ranges from Apple.`;
+        const meta = document.getElementById("meta");
+        meta.textContent = `Checked against ${lines.length.toLocaleString()} ranges from Apple.`;
+        // Not awaited: the date is extra, so it mustn't slow down or break the check.
+        showDataDate(meta);
         return lines;
+      }
+
+      // ranges-updated.txt holds the date (YYYY-MM-DD) the workflow last
+      // refreshed ranges.csv. The workflow rewrites it at least weekly, so
+      // an old date means the automatic updates have stopped. If the file
+      // is missing or unreadable, the date is just left out.
+      const STALE_AFTER_DAYS = 30;
+      const DAY_MS = 24 * 60 * 60 * 1000;
+
+      async function showDataDate(meta) {
+        let dateText;
+        try {
+          const response = await fetch("ranges-updated.txt");
+          if (!response.ok) {
+            return;
+          }
+          dateText = (await response.text()).trim();
+        } catch {
+          return;
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+          return;
+        }
+        const updated = new Date(dateText + "T00:00:00Z");
+        if (Number.isNaN(updated.getTime())) {
+          return;
+        }
+
+        const shownDate = updated.toLocaleDateString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          timeZone: "UTC",
+        });
+        meta.append(` Last refreshed ${shownDate}.`);
+        if ((Date.now() - updated.getTime()) / DAY_MS > STALE_AFTER_DAYS) {
+          meta.append(" Automatic updates may have stopped, so results may be out of date.");
+        }
       }
 
       // Returns null for blank lines, comments, and lines that don't parse.

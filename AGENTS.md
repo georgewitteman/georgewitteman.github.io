@@ -84,6 +84,10 @@ Keep it short and easy to scan:
   refreshed daily by `.github/workflows/update-ranges.yml`, which rejects a
   download that doesn't look like the usual list. If that workflow ever stops
   running or fails, the site still works, just with older data.
+- `icloud-private-relay/ranges-updated.txt`: the date (`YYYY-MM-DD`) the
+  workflow last refreshed `ranges.csv`, rewritten when the list changes and
+  at least weekly. The page shows it and warns once it's over 30 days old.
+  Not `Last-Modified`, which GitHub Pages sets to the last deploy.
 - `clean-link/`: strips tracking and clutter from pasted links. Per-site
   rules (Amazon, eBay, Gmail, Google, YouTube, X, Spotify, Instagram,
   Notion, LinkedIn, Reddit, Linear, Figma) come first, then a generic
