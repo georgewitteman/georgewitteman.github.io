@@ -169,11 +169,14 @@
         return cleaned;
       }
 
-      // eBay: item pages become https://<host>/itm/<item ID>.
+      // eBay: item pages become https://<host>/itm/<item ID>, keeping the
+      // chosen variation (var), like a size or color.
       //
       // Examples:
       //   https://www.ebay.com/itm/Example-Widget/123456789012?hash=item1a2b3c&_trksid=p2047675
       //   → https://www.ebay.com/itm/123456789012
+      //   https://www.ebay.com/itm/123456789012?var=987654321&_trksid=p2047675
+      //   → https://www.ebay.com/itm/123456789012?var=987654321
       //   https://www.ebay.com/sch/i.html?_nkw=widget&_trksid=p2047675
       //   → https://www.ebay.com/sch/i.html?_nkw=widget
       const EBAY_HOST = anyCountryDomain("ebay");
@@ -187,7 +190,9 @@
 
         const match = url.pathname.match(EBAY_ITEM_PATH);
         if (match !== null) {
-          return new URL(url.origin + "/itm/" + match[1]);
+          const cleaned = keepOnlyParams(url, ["var"]);
+          cleaned.pathname = "/itm/" + match[1];
+          return cleaned;
         }
 
         return removeParams(url, ["_trkparms", "_trksid", "amdata", "hash"]);
